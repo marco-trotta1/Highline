@@ -186,11 +186,4 @@ The platform targets consistent outperformance of the USDA national boxed beef c
 
 Internal tool. Not open source.
 
----
 
-## Contacts
-
-| Role | Name |
-|---|---|
-| Executive Director of Sales | Terry Reynolds |
-| Pricing Manager | *(role owner)* |
