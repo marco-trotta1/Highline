@@ -1,36 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Highline
 
-## Getting Started
+Beef pricing intelligence platform for AB Foods / Agri Beef. Ingests USDA AMS reports and live cattle futures into Supabase, exposes typed data queries to a Next.js dashboard.
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** (App Router, TypeScript)
+- **Supabase** — PostgreSQL + Edge Functions + pg_cron
+- **Firecrawl** — USDA PDF scraping
+- **Playwright** — live cattle futures scraping (agribeef.com)
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.local.example .env.local
+# Fill in: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+#          SUPABASE_SERVICE_ROLE_KEY, FIRECRAWL_API_KEY
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Development
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run dev        # Next.js dev server → http://localhost:3000
+npm test           # Run all tests (Vitest)
+npm run test:watch # Watch mode
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Database
 
-## Learn More
+Apply migrations to your Supabase project:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+supabase db push
+# or manually run supabase/migrations/ in order
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Tables: `cutout_daily`, `negotiated_sales`, `slaughter_weekly`, `cold_storage_monthly`, `futures_snapshots`, `ingestion_log`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Edge Functions
 
-## Deploy on Vercel
+Deploy to Supabase:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+supabase functions deploy ingest-negotiated
+supabase functions deploy ingest-slaughter
+supabase functions deploy ingest-cold-storage
+supabase functions deploy ingest-cutout
+supabase functions deploy ingest-futures
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Set required secrets:
+
+```bash
+supabase secrets set FIRECRAWL_API_KEY=fc-...
+```
+
+Enable pg_cron schedules by applying the third migration and setting:
+
+```sql
+ALTER DATABASE postgres SET app.supabase_url = 'https://your-project.supabase.co';
+ALTER DATABASE postgres SET app.service_role_key = 'your-service-role-key';
+```
+
+## Data Access
+
+```typescript
+import {
+  getLatestCutout,
+  getCutoutHistory,
+  getTodayNegotiated,
+  getLatestFutures,
+  getDataHealth,
+} from '@/lib/supabase/queries';
+```
+
+## Project Structure
+
+```
+lib/
+  types/index.ts        — all domain types
+  utils/hash.ts         — SHA-256 for dedup
+  parsers/              — USDA + futures scrapers
+  supabase/
+    client.ts           — Supabase client helpers
+    queries.ts          — typed read queries
+supabase/
+  migrations/           — schema, RLS, pg_cron schedules
+  functions/            — Deno Edge Functions (one per data source)
+tests/                  — Vitest unit tests (21 tests)
+```
