@@ -1,0 +1,90 @@
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Beef cutout (daily boxed beef values, all primals)
+CREATE TABLE cutout_daily (
+  id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  date                date NOT NULL,
+  report_type         text NOT NULL,
+  choice_total        numeric,
+  select_total        numeric,
+  choice_select_spread numeric,
+  chuck               numeric,
+  rib                 numeric,
+  loin                numeric,
+  round               numeric,
+  brisket             numeric,
+  short_plate         numeric,
+  flank               numeric,
+  source_hash         text UNIQUE NOT NULL,
+  created_at          timestamptz DEFAULT now(),
+  updated_at          timestamptz DEFAULT now()
+);
+
+-- Negotiated cash sales (AM and PM sessions)
+CREATE TABLE negotiated_sales (
+  id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  date            date NOT NULL,
+  session         text CHECK (session IN ('AM','PM')),
+  low             numeric,
+  high            numeric,
+  weighted_avg    numeric,
+  volume_loads    integer,
+  session_quality text CHECK (session_quality IN ('active','thin')),
+  source_hash     text UNIQUE NOT NULL,
+  created_at      timestamptz DEFAULT now()
+);
+
+-- Weekly slaughter numbers
+CREATE TABLE slaughter_weekly (
+  id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  week_ending         date NOT NULL,
+  total_head          integer,
+  steer_count         integer,
+  heifer_count        integer,
+  steer_heifer_ratio  numeric,
+  source_hash         text UNIQUE NOT NULL,
+  created_at          timestamptz DEFAULT now()
+);
+
+-- Monthly cold storage inventory
+CREATE TABLE cold_storage_monthly (
+  id                      uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  month                   integer CHECK (month BETWEEN 1 AND 12),
+  year                    integer,
+  total_beef_million_lbs  numeric,
+  vs_5yr_avg_pct          numeric,
+  source_hash             text UNIQUE NOT NULL,
+  created_at              timestamptz DEFAULT now()
+);
+
+-- Live cattle futures snapshots
+CREATE TABLE futures_snapshots (
+  id                    uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  timestamp             timestamptz NOT NULL,
+  front_month_contract  text,
+  front_month_price     numeric,
+  change_today          numeric,
+  change_pct            numeric,
+  source                text DEFAULT 'agribeef_scrape',
+  created_at            timestamptz DEFAULT now()
+);
+
+-- Ingestion audit log
+CREATE TABLE ingestion_log (
+  id               uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  source           text NOT NULL,
+  timestamp        timestamptz NOT NULL,
+  source_hash      text,
+  status           text CHECK (status IN ('success','failed','duplicate')),
+  error_message    text,
+  records_inserted integer DEFAULT 0,
+  created_at       timestamptz DEFAULT now()
+);
+
+-- Indexes for common query patterns
+CREATE INDEX ON cutout_daily (date DESC);
+CREATE INDEX ON negotiated_sales (date DESC, session);
+CREATE INDEX ON slaughter_weekly (week_ending DESC);
+CREATE INDEX ON cold_storage_monthly (year DESC, month DESC);
+CREATE INDEX ON futures_snapshots (timestamp DESC);
+CREATE INDEX ON ingestion_log (source, timestamp DESC);
