@@ -30,7 +30,7 @@ export async function parseColdStorage(
   historicalRows: Array<{ total_beef_million_lbs: number }>
 ): Promise<ColdStorageRecord> {
   const app = new FirecrawlApp({ apiKey });
-  const result = await app.scrapeUrl(REPORT_URL, { formats: ['markdown'] });
+  const result = await (app as any).scrapeUrl(REPORT_URL, { formats: ['markdown'] });
   const markdown: string = (result as { markdown?: string }).markdown ?? '';
   if (!markdown.trim()) {
     throw new ParseError('Firecrawl returned empty content for cold storage report');

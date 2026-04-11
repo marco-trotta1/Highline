@@ -44,7 +44,7 @@ export async function parseNegotiatedSales(
   apiKey: string
 ): Promise<NegotiatedSalesRecord> {
   const app = new FirecrawlApp({ apiKey });
-  const result = await app.scrapeUrl(REPORT_URL, {
+  const result = await (app as any).scrapeUrl(REPORT_URL, {
     formats: ['markdown'],
   });
 

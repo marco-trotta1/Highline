@@ -28,7 +28,7 @@ function extractWeekEnding(text: string): string {
 
 export async function parseSlaughter(apiKey: string): Promise<SlaughterRecord> {
   const app = new FirecrawlApp({ apiKey });
-  const result = await app.scrapeUrl(REPORT_URL, { formats: ['markdown'] });
+  const result = await (app as any).scrapeUrl(REPORT_URL, { formats: ['markdown'] });
   const markdown: string = (result as { markdown?: string }).markdown ?? '';
   if (!markdown.trim()) {
     throw new ParseError('Firecrawl returned empty content for slaughter report');

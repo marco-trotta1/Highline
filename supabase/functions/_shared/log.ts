@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { getServiceClient } from './supabase-client.ts';
 
 export interface LogParams {

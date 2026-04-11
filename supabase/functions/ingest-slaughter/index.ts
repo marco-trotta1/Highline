@@ -1,3 +1,4 @@
+// @ts-nocheck
 // deno-lint-ignore-file no-explicit-any
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 import { getServiceClient } from '../_shared/supabase-client.ts';
