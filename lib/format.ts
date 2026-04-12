@@ -60,3 +60,21 @@ export function formatMonthYear(month: number, year: number): string {
   const d = new Date(year, month - 1, 1);
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
+
+// CME futures contract month codes (industry standard).
+const FUTURES_MONTH_CODES: Record<string, string> = {
+  F: 'Jan', G: 'Feb', H: 'Mar', J: 'Apr', K: 'May', M: 'Jun',
+  N: 'Jul', Q: 'Aug', U: 'Sep', V: 'Oct', X: 'Nov', Z: 'Dec',
+};
+
+// Parse CME contract codes like "LCM26" → "Jun 2026".
+// Falls back to the raw code if parsing fails.
+export function formatContractName(code: string | null | undefined): string {
+  if (!code) return '—';
+  const match = code.match(/([A-Z])(\d{1,2})$/);
+  if (!match) return code;
+  const month = FUTURES_MONTH_CODES[match[1]];
+  if (!month) return code;
+  const year = match[2].length === 2 ? `20${match[2]}` : `2${match[2].padStart(3, '0')}`;
+  return `${month} ${year}`;
+}
