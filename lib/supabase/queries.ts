@@ -1,4 +1,4 @@
-import { createServiceClient } from './client';
+import { createServerClient } from './client';
 import type {
   CutoutDailyRow,
   NegotiatedSalesRow,
@@ -18,7 +18,7 @@ const STALE_MS = {
 };
 
 export async function getLatestCutout(): Promise<CutoutDailyRow | null> {
-  const supabase = createServiceClient();
+  const supabase = createServerClient();
   const { data, error } = await supabase
     .from('cutout_daily')
     .select('*')
@@ -30,7 +30,7 @@ export async function getLatestCutout(): Promise<CutoutDailyRow | null> {
 }
 
 export async function getCutoutHistory(days: number): Promise<CutoutDailyRow[]> {
-  const supabase = createServiceClient();
+  const supabase = createServerClient();
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const { data, error } = await supabase
     .from('cutout_daily')
@@ -42,7 +42,7 @@ export async function getCutoutHistory(days: number): Promise<CutoutDailyRow[]> 
 }
 
 export async function getTodayNegotiated(): Promise<NegotiatedSalesRow[]> {
-  const supabase = createServiceClient();
+  const supabase = createServerClient();
   const today = new Date().toISOString().split('T')[0];
   const { data, error } = await supabase
     .from('negotiated_sales')
@@ -54,7 +54,7 @@ export async function getTodayNegotiated(): Promise<NegotiatedSalesRow[]> {
 }
 
 export async function getNegotiatedHistory(days: number): Promise<NegotiatedSalesRow[]> {
-  const supabase = createServiceClient();
+  const supabase = createServerClient();
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const { data, error } = await supabase
     .from('negotiated_sales')
@@ -66,7 +66,7 @@ export async function getNegotiatedHistory(days: number): Promise<NegotiatedSale
 }
 
 export async function getLatestSlaughter(): Promise<SlaughterWeeklyRow | null> {
-  const supabase = createServiceClient();
+  const supabase = createServerClient();
   const { data, error } = await supabase
     .from('slaughter_weekly')
     .select('*')
@@ -78,7 +78,7 @@ export async function getLatestSlaughter(): Promise<SlaughterWeeklyRow | null> {
 }
 
 export async function getLatestColdStorage(): Promise<ColdStorageMonthlyRow | null> {
-  const supabase = createServiceClient();
+  const supabase = createServerClient();
   const { data, error } = await supabase
     .from('cold_storage_monthly')
     .select('*')
@@ -91,7 +91,7 @@ export async function getLatestColdStorage(): Promise<ColdStorageMonthlyRow | nu
 }
 
 export async function getLatestFutures(): Promise<FuturesSnapshotRow | null> {
-  const supabase = createServiceClient();
+  const supabase = createServerClient();
   const { data, error } = await supabase
     .from('futures_snapshots')
     .select('*')
@@ -103,7 +103,7 @@ export async function getLatestFutures(): Promise<FuturesSnapshotRow | null> {
 }
 
 export async function getYesterdayCutout(): Promise<CutoutDailyRow | null> {
-  const supabase = createServiceClient();
+  const supabase = createServerClient();
   const { data, error } = await supabase
     .from('cutout_daily')
     .select('*')
@@ -115,7 +115,7 @@ export async function getYesterdayCutout(): Promise<CutoutDailyRow | null> {
 }
 
 export async function getSlaughterHistory(weeks: number): Promise<SlaughterWeeklyRow[]> {
-  const supabase = createServiceClient();
+  const supabase = createServerClient();
   const { data, error } = await supabase
     .from('slaughter_weekly')
     .select('*')
@@ -126,7 +126,7 @@ export async function getSlaughterHistory(weeks: number): Promise<SlaughterWeekl
 }
 
 export async function getColdStorageHistory(months: number): Promise<ColdStorageMonthlyRow[]> {
-  const supabase = createServiceClient();
+  const supabase = createServerClient();
   const { data, error } = await supabase
     .from('cold_storage_monthly')
     .select('*')
@@ -138,7 +138,7 @@ export async function getColdStorageHistory(months: number): Promise<ColdStorage
 }
 
 export async function getDataHealth(): Promise<DataHealthStatus[]> {
-  const supabase = createServiceClient();
+  const supabase = createServerClient();
   const now = Date.now();
 
   async function getLastUpdated(table: string, timestampCol: string): Promise<string | null> {

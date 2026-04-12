@@ -1,8 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Anon client — used in Next.js server components and API routes.
-// Respects RLS; authenticated users get SELECT access.
-export function createBrowserClient(): SupabaseClient {
+function requireAnonEnv(): { url: string; key: string } {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) {
@@ -10,17 +8,23 @@ export function createBrowserClient(): SupabaseClient {
       'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY'
     );
   }
+  return { url, key };
+}
+
+// Browser-side client. Used by the Realtime subscription helper.
+// Anon key is public (safe to ship). Reads are gated by RLS SELECT
+// policies scoped to the `anon` role.
+export function createBrowserClient(): SupabaseClient {
+  const { url, key } = requireAnonEnv();
   return createClient(url, key);
 }
 
-// Service-role client — used only in server-side code (queries.ts).
-// Bypasses RLS. Never expose to the browser.
-export function createServiceClient(): SupabaseClient {
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-  }
+// Server-side client (Server Components, Route Handlers). Uses the
+// same anon key as the browser — no service-role secret involved, so
+// nothing sensitive ships to Vercel. Session persistence is disabled
+// because server functions are stateless.
+export function createServerClient(): SupabaseClient {
+  const { url, key } = requireAnonEnv();
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });

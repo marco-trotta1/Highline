@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../lib/supabase/client', () => ({
-  createServiceClient: vi.fn(),
+  createServerClient: vi.fn(),
 }));
 
-import { createServiceClient } from '../../lib/supabase/client';
+import { createServerClient } from '../../lib/supabase/client';
 import {
   getLatestCutout,
   getCutoutHistory,
@@ -49,7 +49,7 @@ function makeQueryChain(singleData: unknown, listData?: unknown[]) {
 describe('getLatestCutout', () => {
   it('returns the most recent cutout row', async () => {
     const chain = makeQueryChain(MOCK_CUTOUT);
-    (createServiceClient as ReturnType<typeof vi.fn>).mockReturnValue({
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({
       from: vi.fn().mockReturnValue(chain),
     });
     const result = await getLatestCutout();
@@ -60,7 +60,7 @@ describe('getLatestCutout', () => {
   it('returns null on error', async () => {
     const chain = makeQueryChain(null);
     chain.single = vi.fn().mockResolvedValue({ data: null, error: { message: 'no rows' } });
-    (createServiceClient as ReturnType<typeof vi.fn>).mockReturnValue({
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({
       from: vi.fn().mockReturnValue(chain),
     });
     const result = await getLatestCutout();
@@ -72,7 +72,7 @@ describe('getDataHealth', () => {
   it('marks negotiated stale when last update > 4 hours ago', async () => {
     const staleTime = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
     const chain = makeQueryChain({ created_at: staleTime });
-    (createServiceClient as ReturnType<typeof vi.fn>).mockReturnValue({
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({
       from: vi.fn().mockReturnValue(chain),
     });
     const health = await getDataHealth();
@@ -84,7 +84,7 @@ describe('getDataHealth', () => {
   it('marks negotiated fresh when last update < 4 hours ago', async () => {
     const freshTime = new Date(Date.now() - 30 * 60 * 1000).toISOString();
     const chain = makeQueryChain({ created_at: freshTime });
-    (createServiceClient as ReturnType<typeof vi.fn>).mockReturnValue({
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({
       from: vi.fn().mockReturnValue(chain),
     });
     const health = await getDataHealth();
