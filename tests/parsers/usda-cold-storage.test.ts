@@ -1,15 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
-vi.mock('@mendable/firecrawl-js', () => ({
-  default: vi.fn().mockImplementation(function () {
-    return { scrapeUrl: vi.fn() };
-  }),
-}));
+import {
+  parseColdStorageQuickStatsResponse,
+} from '../../lib/parsers/usda-cold-storage';
 
-import FirecrawlApp from '@mendable/firecrawl-js';
-import { parseColdStorage } from '../../lib/parsers/usda-cold-storage';
-
-const MOCK_SUPABASE_DATA = [
+const MOCK_HISTORICAL_DATA = [
   { total_beef_million_lbs: 480.0 },
   { total_beef_million_lbs: 470.0 },
   { total_beef_million_lbs: 460.0 },
@@ -17,38 +12,33 @@ const MOCK_SUPABASE_DATA = [
   { total_beef_million_lbs: 450.0 },
 ];
 
-const MOCK_MARKDOWN = `
-USDA Cold Storage Report
-March 2026
-
-Total Beef in Cold Storage: 490.5 million pounds
-`;
+const MOCK_QUICK_STATS_PAYLOAD = {
+  data: [
+    {
+      year: '2026',
+      reference_period_desc: 'MAR',
+      Value: '490.5',
+      short_desc: 'TOTAL BEEF, COLD STORAGE, STOCKS, MEASURED IN MILLION POUNDS',
+    },
+  ],
+};
 
 describe('parseColdStorage', () => {
-  let mockScrapeUrl: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    mockScrapeUrl = vi.fn();
-    (FirecrawlApp as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      function () { return { scrapeUrl: mockScrapeUrl }; }
+  it('parses cold storage data and computes the five-year average delta', () => {
+    const result = parseColdStorageQuickStatsResponse(
+      MOCK_QUICK_STATS_PAYLOAD,
+      MOCK_HISTORICAL_DATA
     );
+
+    expect(result.parsedRecord.total_beef_million_lbs).toBe(490.5);
+    expect(result.parsedRecord.month).toBe(3);
+    expect(result.parsedRecord.year).toBe(2026);
+    expect(result.parsedRecord.vs_5yr_avg_pct).toBeCloseTo(5.94, 1);
+    expect(result.sha256).toHaveLength(64);
   });
 
-  it('parses cold storage data and computes 5yr avg pct', async () => {
-    mockScrapeUrl.mockResolvedValue({ markdown: MOCK_MARKDOWN, success: true });
-    const result = await parseColdStorage('test-api-key', MOCK_SUPABASE_DATA);
-    expect(result.total_beef_million_lbs).toBe(490.5);
-    expect(result.month).toBe(3);
-    expect(result.year).toBe(2026);
-    // 5yr avg = (480+470+460+455+450)/5 = 463
-    // vs_5yr_avg_pct = ((490.5 - 463) / 463) * 100 ≈ 5.94
-    expect(result.vs_5yr_avg_pct).toBeCloseTo(5.94, 1);
-    expect(result.source_hash).toHaveLength(64);
-  });
-
-  it('computes 0% when no historical data available', async () => {
-    mockScrapeUrl.mockResolvedValue({ markdown: MOCK_MARKDOWN, success: true });
-    const result = await parseColdStorage('test-api-key', []);
-    expect(result.vs_5yr_avg_pct).toBe(0);
+  it('computes 0% when there is no historical baseline', () => {
+    const result = parseColdStorageQuickStatsResponse(MOCK_QUICK_STATS_PAYLOAD, []);
+    expect(result.parsedRecord.vs_5yr_avg_pct).toBe(0);
   });
 });
