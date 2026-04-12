@@ -1,61 +1,77 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@mendable/firecrawl-js', () => ({
-  default: vi.fn().mockImplementation(function () {
-    return { scrapeUrl: vi.fn() };
-  }),
-}));
+import {
+  parseCutout,
+  parseCutoutApiPayload,
+} from '../../lib/parsers/usda-cutout';
 
-import FirecrawlApp from '@mendable/firecrawl-js';
-import { parseCutout } from '../../lib/parsers/usda-cutout';
-
-const MOCK_MARKDOWN = `
-LM_XB459 - Daily Boxed Beef Cutout
-Report Date: April 10, 2026
-
-Choice Total: 302.50
-Select Total: 288.00
-Choice-Select Spread: 14.50
-
-Primal Values:
-Chuck: 230.00
-Rib: 420.00
-Loin: 380.00
-Round: 220.00
-Brisket: 210.00
-Short Plate: 175.00
-Flank: 195.00
-`;
+const MOCK_PAYLOAD = [
+  {
+    reportSection: 'Summary',
+    results: [
+      {
+        report_date: '04/10/2026',
+        report_title:
+          'National Daily Boxed Beef Cutout & Boxed Beef Cuts - Negotiated Sales - PM (PDF) (LM_XB403)',
+      },
+    ],
+  },
+  {
+    reportSection: 'Current Cutout Values',
+    results: [
+      {
+        choice_600_900_current: '380.90',
+        select_600_900_current: '381.34',
+      },
+    ],
+  },
+  {
+    reportSection: 'Composite Primal Values',
+    results: [
+      { primal_desc: 'Primal Chuck', choice_600_900: '317.93' },
+      { primal_desc: 'Primal Rib', choice_600_900: '531.88' },
+      { primal_desc: 'Primal Loin', choice_600_900: '510.63' },
+      { primal_desc: 'Primal Round', choice_600_900: '319.64' },
+      { primal_desc: 'Primal Brisket', choice_600_900: '346.22' },
+      { primal_desc: 'Primal Plate', choice_600_900: '304.79' },
+      { primal_desc: 'Primal Flank', choice_600_900: '221.22' },
+    ],
+  },
+];
 
 describe('parseCutout', () => {
-  let mockScrapeUrl: ReturnType<typeof vi.fn>;
-
   beforeEach(() => {
-    mockScrapeUrl = vi.fn();
-    (FirecrawlApp as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      function () { return { scrapeUrl: mockScrapeUrl }; }
-    );
+    vi.restoreAllMocks();
   });
 
-  it('parses all cutout fields', async () => {
-    mockScrapeUrl.mockResolvedValue({ markdown: MOCK_MARKDOWN, success: true });
-    const result = await parseCutout('test-api-key');
-    expect(result.choice_total).toBe(302.5);
-    expect(result.select_total).toBe(288.0);
-    expect(result.choice_select_spread).toBe(14.5);
-    expect(result.chuck).toBe(230.0);
-    expect(result.rib).toBe(420.0);
-    expect(result.loin).toBe(380.0);
-    expect(result.round).toBe(220.0);
-    expect(result.brisket).toBe(210.0);
-    expect(result.short_plate).toBe(175.0);
-    expect(result.flank).toBe(195.0);
+  it('parses all cutout fields from the USDA API payload', async () => {
+    const result = parseCutoutApiPayload(MOCK_PAYLOAD);
+    expect(result.choice_total).toBe(380.9);
+    expect(result.select_total).toBe(381.34);
+    expect(result.choice_select_spread).toBeCloseTo(-0.44, 2);
+    expect(result.chuck).toBe(317.93);
+    expect(result.rib).toBe(531.88);
+    expect(result.loin).toBe(510.63);
+    expect(result.round).toBe(319.64);
+    expect(result.brisket).toBe(346.22);
+    expect(result.short_plate).toBe(304.79);
+    expect(result.flank).toBe(221.22);
     expect(result.source_hash).toHaveLength(64);
   });
 
-  it('returns report_type from report header', async () => {
-    mockScrapeUrl.mockResolvedValue({ markdown: MOCK_MARKDOWN, success: true });
-    const result = await parseCutout('test-api-key');
-    expect(result.report_type).toBe('LM_XB459');
+  it('returns report_type from the report title', async () => {
+    const result = parseCutoutApiPayload(MOCK_PAYLOAD);
+    expect(result.report_type).toBe('LM_XB403');
+  });
+
+  it('fetches the USDA API and parses the latest cutout report', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => MOCK_PAYLOAD,
+    } as Response);
+
+    const result = await parseCutout('unused-api-key');
+    expect(result.date).toBe('2026-04-10');
+    expect(result.choice_total).toBe(380.9);
   });
 });

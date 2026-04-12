@@ -10,25 +10,37 @@ type TopNavProps = {
   connection: ConnectionStatus;
 };
 
-function overallHealth(health: DataHealthStatus[]): 'healthy' | 'stale' | 'error' {
+function overallHealth(
+  health: DataHealthStatus[]
+): 'healthy' | 'stale' | 'no_data' | 'error' {
   if (health.length === 0) return 'error';
-  const staleCount = health.filter((h) => h.stale).length;
-  const missingCount = health.filter((h) => h.last_updated === null).length;
-  if (missingCount > 0) return 'error';
+  const errorCount = health.filter((h) => h.state === 'error').length;
+  const staleCount = health.filter((h) => h.state === 'stale').length;
+  const noDataCount = health.filter((h) => h.state === 'no_data').length;
+  if (errorCount > 0) return 'error';
   if (staleCount > 0) return 'stale';
+  if (noDataCount > 0) return 'no_data';
   return 'healthy';
 }
 
 export function TopNav({ health, connection }: TopNavProps) {
   const status = overallHealth(health);
   const dotColor =
-    status === 'healthy' ? 'bg-bull' : status === 'stale' ? 'bg-warn' : 'bg-bear';
+    status === 'healthy'
+      ? 'bg-bull'
+      : status === 'stale'
+        ? 'bg-warn'
+        : status === 'no_data'
+          ? 'bg-text-muted'
+          : 'bg-bear';
   const dotLabel =
     status === 'healthy'
       ? 'All data fresh'
       : status === 'stale'
-        ? `${health.filter((h) => h.stale).length} source(s) stale`
-        : 'Data errors';
+        ? `${health.filter((h) => h.state === 'stale').length} source(s) stale`
+        : status === 'no_data'
+          ? `${health.filter((h) => h.state === 'no_data').length} source(s) awaiting first load`
+          : 'Data errors';
 
   return (
     <nav className="sticky top-0 z-50 flex h-14 items-center justify-between gap-4 border-b border-border bg-bg/90 px-4 backdrop-blur-sm sm:px-6">

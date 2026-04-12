@@ -105,9 +105,11 @@ export interface FuturesSnapshotRow extends FuturesSnapshot {
 
 export interface DataHealthStatus {
   source: string;
+  state: 'fresh' | 'stale' | 'no_data' | 'error';
   last_updated: string | null;
   stale: boolean;
   stale_reason: string | null;
+  error_message: string | null;
 }
 
 // Everything the dashboard Server Component fetches in one shot.

@@ -43,6 +43,7 @@ function makeQueryChain(singleData: unknown, listData?: unknown[]) {
   chain.eq = vi.fn().mockReturnValue(chain);
   chain.gte = vi.fn().mockResolvedValue({ data: listData ?? [singleData], error: null });
   chain.single = vi.fn().mockResolvedValue({ data: singleData, error: null });
+  chain.maybeSingle = vi.fn().mockResolvedValue({ data: singleData, error: null });
   return chain;
 }
 
@@ -90,5 +91,34 @@ describe('getDataHealth', () => {
     const health = await getDataHealth();
     const neg = health.find((h) => h.source === 'negotiated_sales');
     expect(neg?.stale).toBe(false);
+    expect(neg?.state).toBe('fresh');
+  });
+
+  it('marks source as no_data when the table is empty', async () => {
+    const chain = makeQueryChain(null);
+    chain.maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({
+      from: vi.fn().mockReturnValue(chain),
+    });
+    const health = await getDataHealth();
+    const neg = health.find((h) => h.source === 'negotiated_sales');
+    expect(neg?.state).toBe('no_data');
+    expect(neg?.stale).toBe(false);
+    expect(neg?.error_message).toBeNull();
+  });
+
+  it('marks source as error when the health query fails', async () => {
+    const chain = makeQueryChain(null);
+    chain.maybeSingle = vi
+      .fn()
+      .mockResolvedValue({ data: null, error: { message: 'permission denied' } });
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({
+      from: vi.fn().mockReturnValue(chain),
+    });
+    const health = await getDataHealth();
+    const neg = health.find((h) => h.source === 'negotiated_sales');
+    expect(neg?.state).toBe('error');
+    expect(neg?.stale).toBe(false);
+    expect(neg?.error_message).toBe('permission denied');
   });
 });

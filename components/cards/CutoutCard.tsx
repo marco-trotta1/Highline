@@ -1,5 +1,5 @@
 import type { HTMLAttributes } from 'react';
-import type { CutoutDailyRow } from '@/lib/types';
+import type { CutoutDailyRow, DataHealthStatus } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Delta } from '@/components/ui/Delta';
 import { formatCurrency, formatDateShort } from '@/lib/format';
@@ -7,9 +7,15 @@ import { formatCurrency, formatDateShort } from '@/lib/format';
 type CutoutCardProps = HTMLAttributes<HTMLElement> & {
   latest: CutoutDailyRow | null;
   yesterday: CutoutDailyRow | null;
+  health?: DataHealthStatus;
 };
 
-export function CutoutCard({ latest, yesterday, ...rest }: CutoutCardProps) {
+export function CutoutCard({
+  latest,
+  yesterday,
+  health,
+  ...rest
+}: CutoutCardProps) {
   const choiceDelta =
     latest && yesterday ? latest.choice_total - yesterday.choice_total : null;
 
@@ -44,9 +50,18 @@ export function CutoutCard({ latest, yesterday, ...rest }: CutoutCardProps) {
           <p className="mt-4 text-[10px] text-text-muted">
             USDA Daily Boxed Beef Cutout
           </p>
+          {health?.state === 'stale' && health.stale_reason ? (
+            <p className="mt-2 text-[10px] text-warn">{health.stale_reason}</p>
+          ) : null}
         </>
       ) : (
-        <EmptyState label="No cutout data yet" />
+        <EmptyState
+          label={
+            health?.state === 'error'
+              ? 'Error loading cutout data'
+              : 'No cutout data yet'
+          }
+        />
       )}
     </Card>
   );

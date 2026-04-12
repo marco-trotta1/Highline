@@ -4,28 +4,46 @@ import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 import { getServiceClient } from '../_shared/supabase-client.ts';
 import { writeIngestionLog, sha256Deno } from '../_shared/log.ts';
 
-const REPORT_URL = 'https://www.ams.usda.gov/mnreports/ams_2466.pdf';
+const REPORT_URL =
+  'https://mpr.datamart.ams.usda.gov/services/v1.1/reports/2453?lastReports=1&allSections=true';
 const SOURCE = 'usda_cutout';
+
+function parseNumber(value: string | null | undefined): number | null {
+  if (value == null) return null;
+  const normalized = value.replace(/,/g, '').trim();
+  if (!normalized) return null;
+  const parsed = parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function requireSection(payload: any[], sectionName: string): Record<string, string | null>[] {
+  const section = payload.find((entry) => entry?.reportSection === sectionName);
+  if (!section?.results?.length) {
+    throw new Error(`Missing USDA cutout API section: ${sectionName}`);
+  }
+  return section.results;
+}
+
+function findPrimalValue(rows: Record<string, string | null>[], label: string): number | null {
+  const row = rows.find((entry) => entry.primal_desc === label);
+  return parseNumber(row?.choice_600_900);
+}
 
 serve(async (_req: Request) => {
   const supabase = getServiceClient();
   let sourceHash: string | null = null;
 
   try {
-    const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
-    if (!apiKey) throw new Error('FIRECRAWL_API_KEY not set');
-
-    const fcRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ url: REPORT_URL, formats: ['markdown'] }),
+    const apiRes = await fetch(REPORT_URL, {
+      headers: { Accept: 'application/json' },
     });
-    if (!fcRes.ok) throw new Error(`Firecrawl error: ${fcRes.status}`);
-    const fcData = await fcRes.json();
-    const markdown: string = fcData?.data?.markdown ?? '';
-    if (!markdown.trim()) throw new Error('Empty markdown from Firecrawl');
+    if (!apiRes.ok) throw new Error(`USDA cutout API error: ${apiRes.status}`);
+    const payload = await apiRes.json();
+    if (!Array.isArray(payload) || payload.length === 0) {
+      throw new Error('USDA cutout API returned empty payload');
+    }
 
-    sourceHash = await sha256Deno(markdown);
+    sourceHash = await sha256Deno(JSON.stringify(payload));
 
     const { data: existing } = await supabase
       .from('cutout_daily')
@@ -38,29 +56,26 @@ serve(async (_req: Request) => {
       return new Response(JSON.stringify({ status: 'duplicate' }), { status: 200 });
     }
 
-    const extractPrice = (label: string) => {
-      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const m = markdown.match(new RegExp(`${escaped}[:\\s]+([\\d.]+)`, 'i'));
-      return m ? parseFloat(m[1]) : null;
-    };
+    const summaryRow = requireSection(payload, 'Summary')[0];
+    const currentValuesRow = requireSection(payload, 'Current Cutout Values')[0];
+    const primalRows = requireSection(payload, 'Composite Primal Values');
 
-    const reportTypeMatch = markdown.match(/^(LM_\w+)/m);
-    const report_type = reportTypeMatch ? reportTypeMatch[1] : 'Unknown';
+    const reportTypeMatch = summaryRow.report_title?.match(/\((LM_[A-Z0-9]+)\)\s*$/i);
+    const report_type = reportTypeMatch?.[1] ?? 'LM_XB403';
 
-    const dateMatch = markdown.match(/Report Date[:\s]+(\w+ \d{1,2},?\s*\d{4})/i);
-    const date = dateMatch
-      ? new Date(dateMatch[1]).toISOString().split('T')[0]
-      : new Date().toISOString().split('T')[0];
+    const reportDate = summaryRow.report_date;
+    if (!reportDate) throw new Error('USDA cutout API missing report_date');
+    const date = new Date(reportDate).toISOString().split('T')[0];
 
-    const choice_total = extractPrice('Choice Total');
-    const select_total = extractPrice('Select Total');
-    const chuck = extractPrice('Chuck');
-    const rib = extractPrice('Rib');
-    const loin = extractPrice('Loin');
-    const round = extractPrice('Round');
-    const brisket = extractPrice('Brisket');
-    const short_plate = extractPrice('Short Plate');
-    const flank = extractPrice('Flank');
+    const choice_total = parseNumber(currentValuesRow.choice_600_900_current);
+    const select_total = parseNumber(currentValuesRow.select_600_900_current);
+    const chuck = findPrimalValue(primalRows, 'Primal Chuck');
+    const rib = findPrimalValue(primalRows, 'Primal Rib');
+    const loin = findPrimalValue(primalRows, 'Primal Loin');
+    const round = findPrimalValue(primalRows, 'Primal Round');
+    const brisket = findPrimalValue(primalRows, 'Primal Brisket');
+    const short_plate = findPrimalValue(primalRows, 'Primal Plate');
+    const flank = findPrimalValue(primalRows, 'Primal Flank');
 
     const fields: Record<string, number | null> = {
       choice_total, select_total, chuck, rib, loin, round, brisket, short_plate, flank,

@@ -37,6 +37,9 @@ export function Dashboard({ initialData }: DashboardProps) {
     negotiated: null,
     futures: null,
   });
+  const healthBySource = Object.fromEntries(
+    snapshot.health.map((row) => [row.source, row])
+  );
 
   const triggerFlash = useCallback((key: FlashKey) => {
     setFlash((prev) => ({ ...prev, [key]: true }));
@@ -130,16 +133,19 @@ export function Dashboard({ initialData }: DashboardProps) {
           <CutoutCard
             latest={snapshot.cutout.latest}
             yesterday={snapshot.cutout.yesterday}
+            health={healthBySource.cutout_daily}
             data-flash={flash.cutout ? 'true' : undefined}
             className="lg:col-span-4"
           />
           <NegotiatedCard
             today={snapshot.negotiated.today}
+            health={healthBySource.negotiated_sales}
             data-flash={flash.negotiated ? 'true' : undefined}
             className="lg:col-span-4"
           />
           <FuturesCard
             latest={snapshot.futures.latest}
+            health={healthBySource.futures_snapshots}
             data-flash={flash.futures ? 'true' : undefined}
             className="lg:col-span-4"
           />
@@ -147,11 +153,13 @@ export function Dashboard({ initialData }: DashboardProps) {
           <SlaughterCard
             latest={snapshot.slaughter.latest}
             fourWeekAvgHeiferPct={snapshot.slaughter.fourWeekAvgHeiferPct}
+            health={healthBySource.slaughter_weekly}
             className="lg:col-span-6"
           />
           <ColdStorageCard
             latest={snapshot.coldStorage.latest}
             history={snapshot.coldStorage.history}
+            health={healthBySource.cold_storage_monthly}
             className="lg:col-span-6"
           />
 

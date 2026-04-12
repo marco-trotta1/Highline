@@ -1,76 +1,121 @@
-import FirecrawlApp from '@mendable/firecrawl-js';
 import { sha256 } from '../utils/hash';
 import type { CutoutRecord } from '../types';
 import { ParseError } from '../types';
 
-const REPORT_URL = 'https://www.ams.usda.gov/mnreports/ams_2466.pdf';
+const REPORT_URL =
+  'https://mpr.datamart.ams.usda.gov/services/v1.1/reports/2453?lastReports=1&allSections=true';
 
-function extractPrice(text: string, label: string): number | null {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`${escaped}[:\\s]+(\\d+\\.\\d+)`, 'i');
-  const match = text.match(regex);
-  if (!match) return null;
-  return parseFloat(match[1]);
+type CutoutApiSection = {
+  reportSection?: string;
+  results?: Array<Record<string, string | null>>;
+};
+
+function parseNumber(value: string | null | undefined): number | null {
+  if (value == null) return null;
+  const normalized = value.replace(/,/g, '').trim();
+  if (!normalized) return null;
+  const parsed = parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function extractReportType(text: string): string {
-  const match = text.match(/^(LM_\w+)/m);
-  return match ? match[1] : 'Unknown';
-}
-
-function extractDate(text: string): string {
-  const match = text.match(/Report Date[:\s]+(\w+ \d{1,2},?\s*\d{4})/i);
-  if (match) {
-    const parsed = new Date(match[1]);
-    if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
+function requireSection(
+  sections: CutoutApiSection[],
+  sectionName: string
+): Array<Record<string, string | null>> {
+  const section = sections.find((entry) => entry.reportSection === sectionName);
+  if (!section?.results?.length) {
+    throw new ParseError(`Missing USDA cutout API section: ${sectionName}`);
   }
-  return new Date().toISOString().split('T')[0];
+  return section.results;
 }
 
-export async function parseCutout(apiKey: string): Promise<CutoutRecord> {
-  const app = new FirecrawlApp({ apiKey });
-  const result = await (app as any).scrapeUrl(REPORT_URL, { formats: ['markdown'] });
-  const markdown: string = (result as { markdown?: string }).markdown ?? '';
-  if (!markdown.trim()) {
-    throw new ParseError('Firecrawl returned empty content for cutout report');
+function findPrimalValue(
+  rows: Array<Record<string, string | null>>,
+  label: string
+): number | null {
+  const row = rows.find((entry) => entry.primal_desc === label);
+  return parseNumber(row?.choice_600_900);
+}
+
+export function parseCutoutApiPayload(payload: CutoutApiSection[]): CutoutRecord {
+  if (!Array.isArray(payload) || payload.length === 0) {
+    throw new ParseError('USDA cutout API returned no sections');
   }
 
-  const hash = sha256(markdown);
-  const choice_total = extractPrice(markdown, 'Choice Total');
-  const select_total = extractPrice(markdown, 'Select Total');
-  const choice_select_spread = extractPrice(markdown, 'Choice-Select Spread');
-  const chuck = extractPrice(markdown, 'Chuck');
-  const rib = extractPrice(markdown, 'Rib');
-  const loin = extractPrice(markdown, 'Loin');
-  const round = extractPrice(markdown, 'Round');
-  const brisket = extractPrice(markdown, 'Brisket');
-  const short_plate = extractPrice(markdown, 'Short Plate');
-  const flank = extractPrice(markdown, 'Flank');
+  const summaryRow = requireSection(payload, 'Summary')[0];
+  const currentValuesRow = requireSection(payload, 'Current Cutout Values')[0];
+  const primalRows = requireSection(payload, 'Composite Primal Values');
+
+  const reportDate = summaryRow.report_date;
+  if (!reportDate) {
+    throw new ParseError('USDA cutout API missing report_date');
+  }
+
+  const choiceTotal = parseNumber(currentValuesRow.choice_600_900_current);
+  const selectTotal = parseNumber(currentValuesRow.select_600_900_current);
+  const chuck = findPrimalValue(primalRows, 'Primal Chuck');
+  const rib = findPrimalValue(primalRows, 'Primal Rib');
+  const loin = findPrimalValue(primalRows, 'Primal Loin');
+  const round = findPrimalValue(primalRows, 'Primal Round');
+  const brisket = findPrimalValue(primalRows, 'Primal Brisket');
+  const shortPlate = findPrimalValue(primalRows, 'Primal Plate');
+  const flank = findPrimalValue(primalRows, 'Primal Flank');
 
   const fieldMap: Record<string, number | null> = {
-    choice_total, select_total, chuck, rib, loin, round, brisket, short_plate, flank,
+    choice_total: choiceTotal,
+    select_total: selectTotal,
+    chuck,
+    rib,
+    loin,
+    round,
+    brisket,
+    short_plate: shortPlate,
+    flank,
   };
   const missing = Object.entries(fieldMap)
-    .filter(([, v]) => v === null)
-    .map(([k]) => k);
+    .filter(([, value]) => value === null)
+    .map(([field]) => field);
 
   if (missing.length > 0) {
-    throw new ParseError(`Could not extract fields from cutout report: ${missing.join(', ')}`);
+    throw new ParseError(
+      `Could not extract fields from USDA cutout API payload: ${missing.join(', ')}`
+    );
   }
 
+  const reportTypeMatch = summaryRow.report_title?.match(/\((LM_[A-Z0-9]+)\)\s*$/i);
+  const reportType = reportTypeMatch?.[1] ?? 'LM_XB403';
+
   return {
-    date: extractDate(markdown),
-    report_type: extractReportType(markdown),
-    choice_total: choice_total!,
-    select_total: select_total!,
-    choice_select_spread: choice_select_spread ?? choice_total! - select_total!,
+    date: new Date(reportDate).toISOString().split('T')[0],
+    report_type: reportType,
+    choice_total: choiceTotal!,
+    select_total: selectTotal!,
+    choice_select_spread: choiceTotal! - selectTotal!,
     chuck: chuck!,
     rib: rib!,
     loin: loin!,
     round: round!,
     brisket: brisket!,
-    short_plate: short_plate!,
+    short_plate: shortPlate!,
     flank: flank!,
-    source_hash: hash,
+    source_hash: sha256(JSON.stringify(payload)),
   };
+}
+
+export async function parseCutout(apiKey: string): Promise<CutoutRecord> {
+  void apiKey;
+
+  const response = await fetch(REPORT_URL, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) {
+    throw new ParseError(`USDA cutout API request failed: ${response.status}`);
+  }
+
+  const payload = (await response.json()) as CutoutApiSection[];
+  if (!Array.isArray(payload) || payload.length === 0) {
+    throw new ParseError('USDA cutout API returned an empty payload');
+  }
+
+  return parseCutoutApiPayload(payload);
 }

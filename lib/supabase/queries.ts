@@ -17,6 +17,11 @@ const STALE_MS = {
   futures_snapshots: 45 * 60 * 1000,
 };
 
+type HealthProbe = {
+  lastUpdated: string | null;
+  errorMessage: string | null;
+};
+
 export async function getLatestCutout(): Promise<CutoutDailyRow | null> {
   const supabase = createServerClient();
   const { data, error } = await supabase
@@ -141,14 +146,22 @@ export async function getDataHealth(): Promise<DataHealthStatus[]> {
   const supabase = createServerClient();
   const now = Date.now();
 
-  async function getLastUpdated(table: string, timestampCol: string): Promise<string | null> {
-    const { data } = await supabase
+  async function getLastUpdated(table: string, timestampCol: string): Promise<HealthProbe> {
+    const { data, error } = await supabase
       .from(table)
       .select(timestampCol)
       .order(timestampCol, { ascending: false })
       .limit(1)
-      .single();
-    return (data as Record<string, string> | null)?.[timestampCol] ?? null;
+      .maybeSingle();
+
+    if (error) {
+      return { lastUpdated: null, errorMessage: error.message };
+    }
+
+    return {
+      lastUpdated: (data as Record<string, string> | null)?.[timestampCol] ?? null,
+      errorMessage: null,
+    };
   }
 
   const [cutoutUpdated, negUpdated, slaughterUpdated, coldUpdated, futuresUpdated] = await Promise.all([
@@ -159,17 +172,44 @@ export async function getDataHealth(): Promise<DataHealthStatus[]> {
     getLastUpdated('futures_snapshots', 'created_at'),
   ]);
 
-  function checkStale(source: string, lastUpdated: string | null, thresholdMs: number): DataHealthStatus {
-    if (!lastUpdated) {
-      return { source, last_updated: null, stale: true, stale_reason: 'No data yet' };
+  function checkStale(
+    source: string,
+    probe: HealthProbe,
+    thresholdMs: number
+  ): DataHealthStatus {
+    if (probe.errorMessage) {
+      return {
+        source,
+        state: 'error',
+        last_updated: null,
+        stale: false,
+        stale_reason: 'Query failed',
+        error_message: probe.errorMessage,
+      };
     }
+
+    const { lastUpdated } = probe;
+
+    if (!lastUpdated) {
+      return {
+        source,
+        state: 'no_data',
+        last_updated: null,
+        stale: false,
+        stale_reason: 'No data yet',
+        error_message: null,
+      };
+    }
+
     const age = now - new Date(lastUpdated).getTime();
     const stale = age > thresholdMs;
     return {
       source,
+      state: stale ? 'stale' : 'fresh',
       last_updated: lastUpdated,
       stale,
       stale_reason: stale ? `Last update was ${Math.round(age / 60000)} minutes ago` : null,
+      error_message: null,
     };
   }
 

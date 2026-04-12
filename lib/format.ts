@@ -1,3 +1,5 @@
+const ISO_DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export function formatCurrency(n: number | null | undefined, decimals = 2): string {
   if (n == null) return '—';
   return `$${n.toFixed(decimals)}`;
@@ -29,7 +31,14 @@ export function formatInt(n: number | null | undefined): string {
 
 export function formatDateShort(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const date = ISO_DATE_ONLY_RE.test(iso)
+    ? new Date(`${iso}T00:00:00Z`)
+    : new Date(iso);
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    ...(ISO_DATE_ONLY_RE.test(iso) ? { timeZone: 'UTC' } : {}),
+  });
 }
 
 export function formatDateTime(iso: string | null | undefined): string {

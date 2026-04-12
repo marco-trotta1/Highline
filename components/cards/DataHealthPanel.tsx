@@ -15,12 +15,10 @@ type DataHealthPanelProps = {
   health: DataHealthStatus[];
 };
 
-type Level = 'fresh' | 'stale' | 'error';
+type Level = 'fresh' | 'stale' | 'no_data' | 'error';
 
 function levelFor(row: DataHealthStatus): Level {
-  if (row.last_updated === null) return 'error';
-  if (row.stale) return 'stale';
-  return 'fresh';
+  return row.state;
 }
 
 export function DataHealthPanel({ health }: DataHealthPanelProps) {
@@ -49,7 +47,11 @@ export function DataHealthPanel({ health }: DataHealthPanelProps) {
                   {SOURCE_LABELS[row.source] ?? row.source}
                 </td>
                 <td className="py-2 pr-2 font-mono tabular-nums text-text-muted">
-                  {formatRelative(row.last_updated)}
+                  {row.state === 'error'
+                    ? 'error'
+                    : row.state === 'no_data'
+                      ? 'none yet'
+                      : formatRelative(row.last_updated)}
                 </td>
                 <td className="py-2">
                   <span className="inline-flex items-center gap-2">
@@ -60,6 +62,8 @@ export function DataHealthPanel({ health }: DataHealthPanelProps) {
                           ? 'text-bull'
                           : level === 'stale'
                             ? 'text-warn'
+                            : level === 'no_data'
+                              ? 'text-text-muted'
                             : 'text-bear'
                       }
                     >
@@ -67,11 +71,13 @@ export function DataHealthPanel({ health }: DataHealthPanelProps) {
                         ? 'Fresh'
                         : level === 'stale'
                           ? 'Stale'
+                          : level === 'no_data'
+                            ? 'No Data'
                           : 'Error'}
                     </span>
-                    {row.stale_reason && (
+                    {(row.stale_reason || row.error_message) && (
                       <span className="ml-2 text-text-muted">
-                        — {row.stale_reason}
+                        - {row.error_message ?? row.stale_reason}
                       </span>
                     )}
                   </span>

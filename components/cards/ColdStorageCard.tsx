@@ -1,5 +1,5 @@
 import type { HTMLAttributes } from 'react';
-import type { ColdStorageMonthlyRow } from '@/lib/types';
+import type { ColdStorageMonthlyRow, DataHealthStatus } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Sparkline } from '@/components/ui/Sparkline';
 import { formatMonthYear, formatSignedPct } from '@/lib/format';
@@ -7,18 +7,22 @@ import { formatMonthYear, formatSignedPct } from '@/lib/format';
 type ColdStorageCardProps = HTMLAttributes<HTMLElement> & {
   latest: ColdStorageMonthlyRow | null;
   history: ColdStorageMonthlyRow[];
+  health?: DataHealthStatus;
 };
 
 export function ColdStorageCard({
   latest,
   history,
+  health,
   ...rest
 }: ColdStorageCardProps) {
   if (!latest) {
     return (
       <Card title="Cold Storage" {...rest}>
         <div className="flex h-24 items-center justify-center text-sm text-text-muted">
-          No cold storage data yet
+          {health?.state === 'error'
+            ? 'Error loading cold storage data'
+            : 'No cold storage data yet'}
         </div>
       </Card>
     );
@@ -95,6 +99,9 @@ export function ColdStorageCard({
       <p className="mt-4 text-[10px] text-text-muted">
         USDA Monthly Cold Storage · vs. 5-year seasonal average
       </p>
+      {health?.state === 'stale' && health.stale_reason ? (
+        <p className="mt-2 text-[10px] text-warn">{health.stale_reason}</p>
+      ) : null}
     </Card>
   );
 }

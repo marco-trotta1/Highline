@@ -1,23 +1,27 @@
 import type { HTMLAttributes } from 'react';
-import type { SlaughterWeeklyRow } from '@/lib/types';
+import type { DataHealthStatus, SlaughterWeeklyRow } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { formatDateShort, formatPct, formatSignedPct } from '@/lib/format';
 
 type SlaughterCardProps = HTMLAttributes<HTMLElement> & {
   latest: SlaughterWeeklyRow | null;
   fourWeekAvgHeiferPct: number | null;
+  health?: DataHealthStatus;
 };
 
 export function SlaughterCard({
   latest,
   fourWeekAvgHeiferPct,
+  health,
   ...rest
 }: SlaughterCardProps) {
   if (!latest) {
     return (
       <Card title="Slaughter Mix" {...rest}>
         <div className="flex h-24 items-center justify-center text-sm text-text-muted">
-          No slaughter data yet
+          {health?.state === 'error'
+            ? 'Error loading slaughter data'
+            : 'No slaughter data yet'}
         </div>
       </Card>
     );
@@ -76,6 +80,9 @@ export function SlaughterCard({
       <p className="mt-4 text-[10px] leading-relaxed text-text-muted">
         ↑ Heifer % = tighter Choice supply
       </p>
+      {health?.state === 'stale' && health.stale_reason ? (
+        <p className="mt-2 text-[10px] text-warn">{health.stale_reason}</p>
+      ) : null}
     </Card>
   );
 }

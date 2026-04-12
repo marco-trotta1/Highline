@@ -1,5 +1,5 @@
 import type { HTMLAttributes } from 'react';
-import type { NegotiatedSalesRow } from '@/lib/types';
+import type { DataHealthStatus, NegotiatedSalesRow } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { RangeBar } from '@/components/ui/RangeBar';
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -7,22 +7,32 @@ import { formatCurrency, formatInt } from '@/lib/format';
 
 type NegotiatedCardProps = HTMLAttributes<HTMLElement> & {
   today: NegotiatedSalesRow[];
+  health?: DataHealthStatus;
 };
 
-export function NegotiatedCard({ today, ...rest }: NegotiatedCardProps) {
+export function NegotiatedCard({
+  today,
+  health,
+  ...rest
+}: NegotiatedCardProps) {
   const sessions = [...today].sort((a, b) => (a.session === 'AM' ? -1 : 1));
 
   return (
     <Card title="Negotiated Sales" {...rest}>
       {sessions.length === 0 ? (
         <div className="flex h-24 items-center justify-center text-sm text-text-muted">
-          No sessions reported today
+          {health?.state === 'error'
+            ? 'Error loading negotiated sales'
+            : 'No sessions reported today'}
         </div>
       ) : (
         <div className="flex flex-col gap-5">
           {sessions.map((s) => (
             <SessionBlock key={s.id} row={s} />
           ))}
+          {health?.state === 'stale' && health.stale_reason ? (
+            <p className="text-[10px] text-warn">{health.stale_reason}</p>
+          ) : null}
         </div>
       )}
     </Card>
