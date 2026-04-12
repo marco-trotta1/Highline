@@ -66,13 +66,33 @@ export interface ValidationError {
   reason: string;
 }
 
+export interface ParserResult<TRecord, TRaw> {
+  parsedRecord: TRecord;
+  rawExtractedContent: TRaw;
+  sha256: string;
+}
+
+export class SourceFetchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SourceFetchError';
+  }
+}
+
 export class ParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ParseError';
+  }
+}
+
+export class ValidationFailureError extends Error {
   constructor(
     message: string,
     public readonly validationErrors: ValidationError[] = []
   ) {
     super(message);
-    this.name = 'ParseError';
+    this.name = 'ValidationFailureError';
   }
 }
 

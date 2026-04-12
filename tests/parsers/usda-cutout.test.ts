@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import {
   parseCutout,
   parseCutoutApiPayload,
 } from '../../lib/parsers/usda-cutout';
+import { SourceFetchError } from '../../lib/types';
 
 const MOCK_PAYLOAD = [
   {
@@ -40,38 +41,38 @@ const MOCK_PAYLOAD = [
 ];
 
 describe('parseCutout', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('parses all cutout fields from the USDA API payload', async () => {
+  it('parses the USDA API payload into a parser envelope', () => {
     const result = parseCutoutApiPayload(MOCK_PAYLOAD);
-    expect(result.choice_total).toBe(380.9);
-    expect(result.select_total).toBe(381.34);
-    expect(result.choice_select_spread).toBeCloseTo(-0.44, 2);
-    expect(result.chuck).toBe(317.93);
-    expect(result.rib).toBe(531.88);
-    expect(result.loin).toBe(510.63);
-    expect(result.round).toBe(319.64);
-    expect(result.brisket).toBe(346.22);
-    expect(result.short_plate).toBe(304.79);
-    expect(result.flank).toBe(221.22);
-    expect(result.source_hash).toHaveLength(64);
+
+    expect(result.parsedRecord.date).toBe('2026-04-10');
+    expect(result.parsedRecord.report_type).toBe('LM_XB403');
+    expect(result.parsedRecord.choice_total).toBe(380.9);
+    expect(result.parsedRecord.select_total).toBe(381.34);
+    expect(result.parsedRecord.choice_select_spread).toBeCloseTo(-0.44, 2);
+    expect(result.parsedRecord.short_plate).toBe(304.79);
+    expect(result.rawExtractedContent).toEqual(MOCK_PAYLOAD);
+    expect(result.sha256).toHaveLength(64);
+    expect(result.parsedRecord.source_hash).toBe(result.sha256);
   });
 
-  it('returns report_type from the report title', async () => {
-    const result = parseCutoutApiPayload(MOCK_PAYLOAD);
-    expect(result.report_type).toBe('LM_XB403');
-  });
-
-  it('fetches the USDA API and parses the latest cutout report', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValue({
+  it('fetches the USDA cutout API and parses the latest report', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => MOCK_PAYLOAD,
     } as Response);
 
-    const result = await parseCutout('unused-api-key');
-    expect(result.date).toBe('2026-04-10');
-    expect(result.choice_total).toBe(380.9);
+    const result = await parseCutout('unused', fetchMock);
+    expect(result.parsedRecord.date).toBe('2026-04-10');
+    expect(result.parsedRecord.choice_total).toBe(380.9);
+  });
+
+  it('throws SourceFetchError when the USDA cutout request fails', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      statusText: 'Bad Gateway',
+    } as Response);
+
+    await expect(parseCutout('unused', fetchMock)).rejects.toThrow(SourceFetchError);
   });
 });

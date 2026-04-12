@@ -1,82 +1,128 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
-// Mock Firecrawl before importing the parser
-vi.mock('@mendable/firecrawl-js', () => {
-  return {
-    default: vi.fn().mockImplementation(() => ({
-      scrapeUrl: vi.fn(),
-    })),
-  };
-});
+import {
+  parseNegotiatedApiPayload,
+  parseNegotiatedSales,
+} from '../../lib/parsers/usda-negotiated';
+import {
+  SourceFetchError,
+  ValidationFailureError,
+} from '../../lib/types';
 
-import FirecrawlApp from '@mendable/firecrawl-js';
-import { parseNegotiatedSales } from '../../lib/parsers/usda-negotiated';
+const AM_PAYLOAD = [
+  {
+    reportSection: 'Summary',
+    results: [
+      {
+        report_date: '04/10/2026',
+        published_date: '04/10/2026 11:16:12',
+        purchase_type_desc: 'NEGOTIATED CASH',
+        current_period: 'Confirmed',
+        current_date_volume: '656',
+      },
+    ],
+  },
+  {
+    reportSection: 'Detail',
+    results: [
+      {
+        purchase_type_code: 'NEGOTIATED CASH',
+        class_desc: 'STEER',
+        selling_basis_desc: 'LIVE FOB',
+        grade_desc: 'Total all grades',
+        head_count: '324',
+        price_range_low: '246.00',
+        price_range_high: '250.00',
+        wtd_avg_price: '248.13',
+      },
+    ],
+  },
+];
 
-const MOCK_MARKDOWN = `
-LM_CT113 - Negotiated Sales - Live Cattle
-Report Date: April 10, 2026
-
-Session: AM
-Low Price: 188.00
-High Price: 192.00
-Weighted Average: 190.25
-Volume: 15 Loads
-`;
-
-const THIN_MOCK_MARKDOWN = `
-LM_CT113 - Negotiated Sales - Live Cattle
-Report Date: April 10, 2026
-
-Session: PM
-Low Price: 189.00
-High Price: 191.00
-Weighted Average: 190.00
-Volume: 8 Loads
-`;
+const PM_PAYLOAD = [
+  {
+    reportSection: 'Summary',
+    results: [
+      {
+        report_date: '04/10/2026',
+        published_date: '04/10/2026 15:01:39',
+        purchase_type_desc: 'NEGOTIATED CASH',
+        current_period: 'Confirmed',
+        current_date_volume: '3,546',
+      },
+    ],
+  },
+  {
+    reportSection: 'Detail',
+    results: [
+      {
+        purchase_type_code: 'NEGOTIATED CASH',
+        class_desc: 'STEER',
+        selling_basis_desc: 'LIVE FOB',
+        grade_desc: 'Total all grades',
+        head_count: '2,023',
+        price_range_low: '250.00',
+        price_range_high: '250.00',
+        wtd_avg_price: '250.00',
+      },
+    ],
+  },
+];
 
 describe('parseNegotiatedSales', () => {
-  let mockScrapeUrl: ReturnType<typeof vi.fn>;
+  it('parses the latest AM/PM payload and returns the parser envelope', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => AM_PAYLOAD,
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => PM_PAYLOAD,
+      } as Response);
 
-  beforeEach(() => {
-    mockScrapeUrl = vi.fn();
-    (FirecrawlApp as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      function () { return { scrapeUrl: mockScrapeUrl }; }
+    const result = await parseNegotiatedSales('unused', fetchMock);
+
+    expect(result.parsedRecord.session).toBe('PM');
+    expect(result.parsedRecord.date).toBe('2026-04-10');
+    expect(result.parsedRecord.low).toBe(250);
+    expect(result.parsedRecord.high).toBe(250);
+    expect(result.parsedRecord.weighted_avg).toBe(250);
+    expect(result.parsedRecord.volume_loads).toBe(93);
+    expect(result.parsedRecord.session_quality).toBe('active');
+    expect(result.rawExtractedContent).toEqual(PM_PAYLOAD);
+    expect(result.sha256).toHaveLength(64);
+    expect(result.parsedRecord.source_hash).toBe(result.sha256);
+  });
+
+  it('flags thin sessions when confirmed volume converts to fewer than 10 loads', () => {
+    const thinPayload = structuredClone(AM_PAYLOAD);
+    thinPayload[0].results[0].current_date_volume = '300';
+
+    const result = parseNegotiatedApiPayload(thinPayload, 'AM');
+    expect(result.parsedRecord.session_quality).toBe('thin');
+    expect(result.parsedRecord.volume_loads).toBe(8);
+  });
+
+  it('throws ValidationFailureError when weighted average is out of range', () => {
+    const invalidPayload = structuredClone(PM_PAYLOAD);
+    invalidPayload[1].results[0].wtd_avg_price = '50.00';
+
+    expect(() => parseNegotiatedApiPayload(invalidPayload, 'PM')).toThrow(
+      ValidationFailureError
     );
   });
 
-  it('parses AM session from markdown', async () => {
-    mockScrapeUrl.mockResolvedValue({ markdown: MOCK_MARKDOWN, success: true });
-    const result = await parseNegotiatedSales('test-api-key');
-    expect(result.session).toBe('AM');
-    expect(result.low).toBe(188.0);
-    expect(result.high).toBe(192.0);
-    expect(result.weighted_avg).toBe(190.25);
-    expect(result.volume_loads).toBe(15);
-    expect(result.session_quality).toBe('active');
-    expect(result.source_hash).toHaveLength(64);
-  });
+  it('throws SourceFetchError when the USDA API request fails', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+    } as Response);
 
-  it('flags thin session when volume < 10 loads', async () => {
-    mockScrapeUrl.mockResolvedValue({ markdown: THIN_MOCK_MARKDOWN, success: true });
-    const result = await parseNegotiatedSales('test-api-key');
-    expect(result.session_quality).toBe('thin');
-    expect(result.volume_loads).toBe(8);
-  });
-
-  it('throws ParseError when weighted_avg is out of range', async () => {
-    const badMarkdown = MOCK_MARKDOWN.replace('190.25', '50.00');
-    mockScrapeUrl.mockResolvedValue({ markdown: badMarkdown, success: true });
-    await expect(parseNegotiatedSales('test-api-key')).rejects.toThrow('weighted_avg');
-  });
-
-  it('throws ParseError when volume is out of range', async () => {
-    const badMarkdown = MOCK_MARKDOWN.replace('15 Loads', '600 Loads');
-    mockScrapeUrl.mockResolvedValue({ markdown: badMarkdown, success: true });
-    await expect(parseNegotiatedSales('test-api-key')).rejects.toThrow('volume_loads');
-  });
-
-  it('throws when scrape returns no markdown', async () => {
-    mockScrapeUrl.mockResolvedValue({ markdown: '', success: true });
-    await expect(parseNegotiatedSales('test-api-key')).rejects.toThrow();
+    await expect(parseNegotiatedSales('unused', fetchMock)).rejects.toThrow(
+      SourceFetchError
+    );
   });
 });
