@@ -6,9 +6,11 @@ import type {
   ColdStorageMonthlyRow,
   FuturesSnapshotRow,
   DataHealthStatus,
+  DashboardSnapshot,
 } from '../types';
 
 const STALE_MS = {
+  cutout_daily: 4 * 60 * 60 * 1000,
   negotiated_sales: 4 * 60 * 60 * 1000,
   slaughter_weekly: 8 * 24 * 60 * 60 * 1000,
   cold_storage_monthly: 35 * 24 * 60 * 60 * 1000,
@@ -100,6 +102,41 @@ export async function getLatestFutures(): Promise<FuturesSnapshotRow | null> {
   return data as FuturesSnapshotRow;
 }
 
+export async function getYesterdayCutout(): Promise<CutoutDailyRow | null> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from('cutout_daily')
+    .select('*')
+    .order('date', { ascending: false })
+    .range(1, 1)
+    .maybeSingle();
+  if (error) return null;
+  return (data ?? null) as CutoutDailyRow | null;
+}
+
+export async function getSlaughterHistory(weeks: number): Promise<SlaughterWeeklyRow[]> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from('slaughter_weekly')
+    .select('*')
+    .order('week_ending', { ascending: false })
+    .limit(weeks);
+  if (error) return [];
+  return (data ?? []) as SlaughterWeeklyRow[];
+}
+
+export async function getColdStorageHistory(months: number): Promise<ColdStorageMonthlyRow[]> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from('cold_storage_monthly')
+    .select('*')
+    .order('year', { ascending: false })
+    .order('month', { ascending: false })
+    .limit(months);
+  if (error) return [];
+  return ((data ?? []) as ColdStorageMonthlyRow[]).reverse();
+}
+
 export async function getDataHealth(): Promise<DataHealthStatus[]> {
   const supabase = createServiceClient();
   const now = Date.now();
@@ -114,7 +151,8 @@ export async function getDataHealth(): Promise<DataHealthStatus[]> {
     return (data as Record<string, string> | null)?.[timestampCol] ?? null;
   }
 
-  const [negUpdated, slaughterUpdated, coldUpdated, futuresUpdated] = await Promise.all([
+  const [cutoutUpdated, negUpdated, slaughterUpdated, coldUpdated, futuresUpdated] = await Promise.all([
+    getLastUpdated('cutout_daily', 'created_at'),
     getLastUpdated('negotiated_sales', 'created_at'),
     getLastUpdated('slaughter_weekly', 'created_at'),
     getLastUpdated('cold_storage_monthly', 'created_at'),
@@ -136,9 +174,57 @@ export async function getDataHealth(): Promise<DataHealthStatus[]> {
   }
 
   return [
+    checkStale('cutout_daily', cutoutUpdated, STALE_MS.cutout_daily),
     checkStale('negotiated_sales', negUpdated, STALE_MS.negotiated_sales),
+    checkStale('futures_snapshots', futuresUpdated, STALE_MS.futures_snapshots),
     checkStale('slaughter_weekly', slaughterUpdated, STALE_MS.slaughter_weekly),
     checkStale('cold_storage_monthly', coldUpdated, STALE_MS.cold_storage_monthly),
-    checkStale('futures_snapshots', futuresUpdated, STALE_MS.futures_snapshots),
   ];
+}
+
+// Single-shot aggregator used by the dashboard Server Component and the
+// polling-fallback /api/snapshot route. Fetches everything in parallel.
+export async function getSnapshot(): Promise<DashboardSnapshot> {
+  const [
+    cutoutLatest,
+    cutoutPrev,
+    negotiatedToday,
+    futuresLatest,
+    slaughterLatest,
+    slaughterHistory,
+    coldStorageLatest,
+    coldStorageHistory,
+    health,
+  ] = await Promise.all([
+    getLatestCutout(),
+    getYesterdayCutout(),
+    getTodayNegotiated(),
+    getLatestFutures(),
+    getLatestSlaughter(),
+    getSlaughterHistory(4),
+    getLatestColdStorage(),
+    getColdStorageHistory(12),
+    getDataHealth(),
+  ]);
+
+  // 4-week heifer % average from the last 4 slaughter rows.
+  const fourWeekAvgHeiferPct = (() => {
+    if (slaughterHistory.length === 0) return null;
+    const pctSum = slaughterHistory.reduce((acc, row) => {
+      const denom = row.steer_count + row.heifer_count;
+      if (denom === 0) return acc;
+      return acc + (row.heifer_count / denom) * 100;
+    }, 0);
+    return pctSum / slaughterHistory.length;
+  })();
+
+  return {
+    cutout: { latest: cutoutLatest, yesterday: cutoutPrev },
+    negotiated: { today: negotiatedToday },
+    futures: { latest: futuresLatest },
+    slaughter: { latest: slaughterLatest, fourWeekAvgHeiferPct },
+    coldStorage: { latest: coldStorageLatest, history: coldStorageHistory },
+    health,
+    fetchedAt: new Date().toISOString(),
+  };
 }

@@ -109,3 +109,27 @@ export interface DataHealthStatus {
   stale: boolean;
   stale_reason: string | null;
 }
+
+// Everything the dashboard Server Component fetches in one shot.
+export interface DashboardSnapshot {
+  cutout: {
+    latest: CutoutDailyRow | null;
+    yesterday: CutoutDailyRow | null;
+  };
+  negotiated: {
+    today: NegotiatedSalesRow[];
+  };
+  futures: {
+    latest: FuturesSnapshotRow | null;
+  };
+  slaughter: {
+    latest: SlaughterWeeklyRow | null;
+    fourWeekAvgHeiferPct: number | null;
+  };
+  coldStorage: {
+    latest: ColdStorageMonthlyRow | null;
+    history: ColdStorageMonthlyRow[];
+  };
+  health: DataHealthStatus[];
+  fetchedAt: string;
+}
