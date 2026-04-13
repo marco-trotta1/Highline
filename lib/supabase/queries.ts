@@ -109,11 +109,13 @@ export async function getLatestFutures(): Promise<FuturesSnapshotRow | null> {
 
 export async function getYesterdayCutout(): Promise<CutoutDailyRow | null> {
   const supabase = createServerClient();
+  const today = new Date().toISOString().split('T')[0];
   const { data, error } = await supabase
     .from('cutout_daily')
     .select('*')
     .order('date', { ascending: false })
-    .range(1, 1)
+    .lt('date', today)
+    .limit(1)
     .maybeSingle();
   if (error) return null;
   return (data ?? null) as CutoutDailyRow | null;

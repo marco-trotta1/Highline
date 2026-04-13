@@ -13,6 +13,7 @@ import {
   getLatestSlaughter,
   getLatestColdStorage,
   getLatestFutures,
+  getYesterdayCutout,
   getDataHealth,
 } from '../../lib/supabase/queries';
 
@@ -41,6 +42,7 @@ function makeQueryChain(singleData: unknown, listData?: unknown[]) {
   chain.order = vi.fn().mockReturnValue(chain);
   chain.limit = vi.fn().mockReturnValue(chain);
   chain.eq = vi.fn().mockReturnValue(chain);
+  chain.lt = vi.fn().mockReturnValue(chain);
   chain.gte = vi.fn().mockResolvedValue({ data: listData ?? [singleData], error: null });
   chain.single = vi.fn().mockResolvedValue({ data: singleData, error: null });
   chain.maybeSingle = vi.fn().mockResolvedValue({ data: singleData, error: null });
@@ -66,6 +68,61 @@ describe('getLatestCutout', () => {
     });
     const result = await getLatestCutout();
     expect(result).toBeNull();
+  });
+});
+
+describe('getYesterdayCutout', () => {
+  it('returns the most recent cutout row strictly before today', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-12T12:00:00Z'));
+
+    const rows = [
+      { ...MOCK_CUTOUT, id: 'uuid-2', date: '2026-04-10', choice_total: 301.25 },
+      { ...MOCK_CUTOUT, id: 'uuid-1', date: '2026-04-11', choice_total: 302.5 },
+    ];
+
+    let orderedRows = [...rows];
+    let limitedRows = [...rows];
+
+    const chain: Record<string, unknown> = {};
+    chain.select = vi.fn().mockReturnValue(chain);
+    chain.order = vi.fn().mockImplementation((column: string, options?: { ascending?: boolean }) => {
+      if (column === 'date') {
+        orderedRows = [...orderedRows].sort((a, b) =>
+          options?.ascending ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)
+        );
+        limitedRows = orderedRows;
+      }
+      return chain;
+    });
+    chain.lt = vi.fn().mockImplementation((column: string, value: string) => {
+      if (column === 'date') {
+        orderedRows = orderedRows.filter((row) => row.date < value);
+        limitedRows = orderedRows;
+      }
+      return chain;
+    });
+    chain.limit = vi.fn().mockImplementation((count: number) => {
+      limitedRows = orderedRows.slice(0, count);
+      return chain;
+    });
+    chain.maybeSingle = vi.fn().mockImplementation(async () => ({
+      data: limitedRows[0] ?? null,
+      error: null,
+    }));
+
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({
+      from: vi.fn().mockReturnValue(chain),
+    });
+
+    const result = await getYesterdayCutout();
+
+    expect(result?.date).toBe('2026-04-11');
+    expect(result?.choice_total).toBe(302.5);
+    expect(chain.lt).toHaveBeenCalledWith('date', '2026-04-12');
+    expect(chain.limit).toHaveBeenCalledWith(1);
+
+    vi.useRealTimers();
   });
 });
 
