@@ -9,7 +9,7 @@ import { writeIngestionLog, sha256Deno } from '../_shared/log.ts';
 const AM_URL = 'https://mpr.datamart.ams.usda.gov/services/v1.1/reports/2660?lastReports=1&allSections=true';
 const PM_URL = 'https://mpr.datamart.ams.usda.gov/services/v1.1/reports/2661?lastReports=1&allSections=true';
 const SOURCE = 'usda_negotiated';
-const THIN_THRESHOLD = 10;
+const THIN_THRESHOLD = 400;
 
 function parseNumber(value: string | number | null | undefined): number | null {
   if (value == null) return null;
@@ -31,24 +31,48 @@ async function fetchReport(url: string, session: 'AM' | 'PM'): Promise<any[]> {
 }
 
 function extractSnapshot(payload: any[], session: 'AM' | 'PM') {
-  let row: Record<string, any> | null = null;
-  for (const section of payload) {
-    const hit = section?.results?.find?.((r: any) => r?.weighted_average != null);
-    if (hit) { row = hit; break; }
-  }
-  if (!row) throw new Error(`No row with weighted_average in payload (${session})`);
+  const detailSection = payload.find((s: any) => s?.reportSection === 'Detail');
+  if (!detailSection) throw new Error(`No Detail section in payload (${session})`);
 
-  const reportDate = row.report_date ?? row.slug_date;
+  const allRows: any[] = Array.isArray(detailSection.results) ? detailSection.results : [];
+  const rows = allRows.filter((r: any) => {
+    const price = parseNumber(r?.wtd_avg_price);
+    const head = parseNumber(r?.head_count);
+    return price !== null && head !== null;
+  });
+
+  if (rows.length === 0) throw new Error(`No Detail rows with wtd_avg_price and head_count (${session})`);
+
+  let totalHead = 0;
+  let weightedSum = 0;
+  let low: number | null = null;
+  let high: number | null = null;
+
+  for (const r of rows) {
+    const price = parseNumber(r.wtd_avg_price) as number;
+    const head = parseNumber(r.head_count) as number;
+    totalHead += head;
+    weightedSum += price * head;
+
+    const rLow = parseNumber(r.price_range_low);
+    const rHigh = parseNumber(r.price_range_high);
+    if (rLow !== null) low = low === null ? rLow : Math.min(low, rLow);
+    if (rHigh !== null) high = high === null ? rHigh : Math.max(high, rHigh);
+  }
+
+  const weighted_avg = totalHead > 0 ? weightedSum / totalHead : null;
+
+  const reportDate = rows[0].report_date ?? rows[0].slug_date;
   if (!reportDate) throw new Error(`Missing report_date (${session})`);
   const date = new Date(reportDate).toISOString().split('T')[0];
 
   return {
     date,
     session,
-    low: parseNumber(row.low_price),
-    high: parseNumber(row.high_price),
-    weighted_avg: parseNumber(row.weighted_average),
-    volume_loads: parseNumber(row.volume),
+    low,
+    high,
+    weighted_avg,
+    volume_loads: totalHead,
   };
 }
 
@@ -62,42 +86,52 @@ serve(async (_req: Request) => {
       fetchReport(PM_URL, 'PM'),
     ]);
 
-    sourceHash = await sha256Deno(JSON.stringify({ am: amPayload, pm: pmPayload }));
+    const baseHash = await sha256Deno(JSON.stringify({ am: amPayload, pm: pmPayload }));
+    sourceHash = baseHash;
+    const amHash = `${baseHash}-AM`;
+    const pmHash = `${baseHash}-PM`;
 
     const { data: existing } = await supabase
       .from('negotiated_sales')
-      .select('id')
-      .eq('source_hash', sourceHash)
-      .single();
+      .select('id, source_hash')
+      .in('source_hash', [amHash, pmHash]);
 
-    if (existing) {
+    if (existing && existing.length >= 2) {
       await writeIngestionLog({ source: SOURCE, source_hash: sourceHash, status: 'duplicate', records_inserted: 0 });
       return new Response(JSON.stringify({ status: 'duplicate' }), { status: 200 });
     }
+    const existingHashes = new Set((existing ?? []).map((r: any) => r.source_hash));
 
     const snapshots = [
       extractSnapshot(amPayload, 'AM'),
       extractSnapshot(pmPayload, 'PM'),
     ];
 
-    const rows = snapshots.map(({ date, session, low, high, weighted_avg, volume_loads }) => {
-      if (weighted_avg === null || weighted_avg < 150 || weighted_avg > 400) {
-        throw new Error(`${session} weighted_avg ${weighted_avg} outside valid range [$150–$400/cwt]`);
-      }
-      if (volume_loads === null || volume_loads < 0 || volume_loads > 500) {
-        throw new Error(`${session} volume_loads ${volume_loads} outside valid range [0–500]`);
-      }
-      return {
-        date,
-        session,
-        low,
-        high,
-        weighted_avg,
-        volume_loads,
-        session_quality: volume_loads < THIN_THRESHOLD ? 'thin' : 'active',
-        source_hash: sourceHash,
-      };
-    });
+    const rows = snapshots
+      .map(({ date, session, low, high, weighted_avg, volume_loads }) => {
+        if (weighted_avg === null || weighted_avg < 150 || weighted_avg > 400) {
+          throw new Error(`${session} weighted_avg ${weighted_avg} outside valid range [$150–$400/cwt]`);
+        }
+        if (volume_loads === null || volume_loads < 0 || volume_loads > 1_000_000) {
+          throw new Error(`${session} volume_loads ${volume_loads} outside valid range [0–1,000,000]`);
+        }
+        return {
+          date,
+          session,
+          low,
+          high,
+          weighted_avg,
+          volume_loads,
+          session_quality: volume_loads < THIN_THRESHOLD ? 'thin' : 'active',
+          source_hash: session === 'AM' ? amHash : pmHash,
+        };
+      })
+      .filter((r) => !existingHashes.has(r.source_hash));
+
+    if (rows.length === 0) {
+      await writeIngestionLog({ source: SOURCE, source_hash: sourceHash, status: 'duplicate', records_inserted: 0 });
+      return new Response(JSON.stringify({ status: 'duplicate' }), { status: 200 });
+    }
 
     const { error } = await supabase.from('negotiated_sales').insert(rows);
     if (error) throw new Error(`DB insert failed: ${error.message}`);
