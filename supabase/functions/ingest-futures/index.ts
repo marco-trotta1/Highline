@@ -32,29 +32,21 @@ serve(async (req: Request) => {
   const supabase = getServiceClient();
 
   try {
-    const pageRes = await fetch(AGRIBEEF_URL, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HighlineBot/1.0)' },
+    const YAHOO_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/LE=F?interval=1d&range=1d';
+
+    const res = await fetch(YAHOO_URL, {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
     });
-    if (!pageRes.ok) throw new Error(`Fetch failed: ${pageRes.status}`);
-    const html = await pageRes.text();
-
-    // Patterns tuned after inspecting live Agri Beef HTML
-    const contractMatch = html.match(/LC[A-Z]\d{2}|Live Cattle [A-Z][a-z]{2} '\d{2}/);
-    const priceMatch = html.match(/(\d{3}\.\d{2,3})/);
-    const changeMatch = html.match(/([+-]\d+\.\d+)\s*(?:pts?|<)/);
-    const changePctMatch = html.match(/([+-]\d+\.\d+)%/);
-
-    if (!contractMatch || !priceMatch) {
-      throw new Error('Could not extract futures contract/price from Agri Beef HTML');
-    }
+    const json = await res.json();
+    const meta = json.chart.result[0].meta;
 
     const snapshot = {
       timestamp: new Date().toISOString(),
-      front_month_contract: contractMatch[0],
-      front_month_price: parseFloat(priceMatch[1]),
-      change_today: changeMatch ? parseFloat(changeMatch[1]) : 0,
-      change_pct: changePctMatch ? parseFloat(changePctMatch[1]) : 0,
-      source: 'agribeef_scrape',
+      front_month_contract: meta.symbol ?? 'LE=F',
+      front_month_price: meta.regularMarketPrice,
+      change_today: meta.regularMarketPrice - meta.previousClose,
+      change_pct: ((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 100,
+      source: 'yahoo_finance',
     };
 
     const { error } = await supabase.from('futures_snapshots').insert(snapshot);
