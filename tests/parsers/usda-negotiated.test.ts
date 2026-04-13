@@ -9,7 +9,12 @@ import {
   ValidationFailureError,
 } from '../../lib/types';
 
-const AM_PAYLOAD = [
+type NegotiatedSection = {
+  reportSection: string;
+  results: Array<Record<string, string>>;
+};
+
+const AM_PAYLOAD: NegotiatedSection[] = [
   {
     reportSection: 'Summary',
     results: [
@@ -39,7 +44,7 @@ const AM_PAYLOAD = [
   },
 ];
 
-const PM_PAYLOAD = [
+const PM_PAYLOAD: NegotiatedSection[] = [
   {
     reportSection: 'Summary',
     results: [
