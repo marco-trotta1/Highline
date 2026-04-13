@@ -89,12 +89,12 @@ export function parseSlaughterReportText(
   );
   const projectedSaturdayMatch = requireMatch(
     normalizedText,
-    /Sat ([A-Za-z]{3} \d{1,2}, \d{4}).*?Cattle\s+[\d,]+\s+[\d,]+\s+[\d,]+\s+([\d,]+)/s,
+    /Sat ([A-Za-z]{3} \d{1,2}, \d{4})[\s\S]*?Cattle\s+[\d,]+\s+[\d,]+\s+[\d,]+\s+([\d,]+)/,
     'Could not find the USDA slaughter projected week-ending cattle total'
   );
   const breakdownMatch = requireMatch(
     normalizedText,
-    /Previous Day Breakdown\s+.*?Cattle\s+Steers\/Heifers\s+([\d,]+)\s+Cows\/Bulls\s+([\d,]+)/s,
+    /Previous Day Breakdown[\s\S]*?Cattle\s+Steers\/Heifers\s+([\d,]+)\s+Cows\/Bulls\s+([\d,]+)/,
     'Could not find the USDA slaughter previous-day cattle breakdown'
   );
 
