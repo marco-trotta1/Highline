@@ -132,6 +132,55 @@ export interface DataHealthStatus {
   error_message: string | null;
 }
 
+export type MarketTone = 'bull' | 'neutral' | 'bear';
+
+export interface MarketDriverSignal {
+  key: 'futures' | 'negotiated' | 'cold_storage';
+  label: string;
+  tone: MarketTone;
+  score: number;
+  weight: number;
+  detail: string;
+}
+
+export interface MarketDirectionSignal {
+  tone: MarketTone;
+  confidence_pct: number;
+  confidence_label: 'low' | 'medium' | 'high';
+  score: number;
+  summary: string;
+  drivers: MarketDriverSignal[];
+}
+
+export interface BidRangeCalculatorContext {
+  benchmark_price: number | null;
+  negotiated_anchor: number | null;
+  cutout_anchor: number | null;
+  spread_to_cutout: number | null;
+  latest_session: 'AM' | 'PM' | null;
+  latest_session_quality: 'active' | 'thin' | null;
+  market_tone: MarketTone;
+  market_confidence_label: 'low' | 'medium' | 'high';
+}
+
+export interface BidRangeInput {
+  grade: 'standard' | 'choice' | 'choice-plus' | 'prime-capable';
+  brand: 'commodity' | 'program' | 'natural' | 'branded';
+  channel: 'cash' | 'formula' | 'grid' | 'program';
+  weight_lbs: number;
+}
+
+export interface BidRangeOutput {
+  benchmark: number;
+  midpoint: number;
+  low: number;
+  high: number;
+  adjustments: Array<{
+    label: string;
+    amount: number;
+  }>;
+}
+
 // Everything the dashboard Server Component fetches in one shot.
 export interface DashboardSnapshot {
   cutout: {
@@ -151,6 +200,10 @@ export interface DashboardSnapshot {
   coldStorage: {
     latest: ColdStorageMonthlyRow | null;
     history: ColdStorageMonthlyRow[];
+  };
+  market: {
+    direction: MarketDirectionSignal | null;
+    calculator: BidRangeCalculatorContext;
   };
   health: DataHealthStatus[];
   fetchedAt: string;
