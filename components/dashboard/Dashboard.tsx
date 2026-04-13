@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import type {
   DashboardSnapshot,
   CutoutDailyRow,
@@ -14,6 +14,8 @@ import { FuturesCard } from '@/components/cards/FuturesCard';
 import { SlaughterCard } from '@/components/cards/SlaughterCard';
 import { ColdStorageCard } from '@/components/cards/ColdStorageCard';
 import { DataHealthPanel } from '@/components/cards/DataHealthPanel';
+import { DirectionalIndicatorCard } from '@/components/cards/DirectionalIndicatorCard';
+import { BidRangeCalculatorCard } from '@/components/cards/BidRangeCalculatorCard';
 import { subscribeToSnapshot } from '@/lib/supabase/realtime';
 
 type DashboardProps = {
@@ -41,19 +43,30 @@ export function Dashboard({ initialData }: DashboardProps) {
     snapshot.health.map((row) => [row.source, row])
   );
 
-  const triggerFlash = useCallback((key: FlashKey) => {
+  const triggerFlash = (key: FlashKey) => {
     setFlash((prev) => ({ ...prev, [key]: true }));
     const existing = flashTimers.current[key];
     if (existing) clearTimeout(existing);
     flashTimers.current[key] = setTimeout(() => {
       setFlash((prev) => ({ ...prev, [key]: false }));
     }, 1500);
-  }, []);
+  };
+
+  const refreshSnapshot = useEffectEvent(async () => {
+    try {
+      const res = await fetch('/api/snapshot', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = (await res.json()) as DashboardSnapshot;
+      setSnapshot(data);
+    } catch {
+      /* swallow — next refresh will retry */
+    }
+  });
 
   useEffect(() => {
     const timersAtCleanup = flashTimers.current;
     const unsubscribe = subscribeToSnapshot(
-      (table, row) => {
+      async (table, row) => {
         if (table === 'cutout_daily') {
           const next = row as CutoutDailyRow;
           setSnapshot((prev) => {
@@ -72,8 +85,6 @@ export function Dashboard({ initialData }: DashboardProps) {
           triggerFlash('cutout');
         } else if (table === 'negotiated_sales') {
           const next = row as NegotiatedSalesRow;
-          const today = new Date().toISOString().split('T')[0];
-          if (next.date !== today) return;
           setSnapshot((prev) => {
             const without = prev.negotiated.today.filter((r) => r.id !== next.id);
             return { ...prev, negotiated: { today: [...without, next] } };
@@ -91,6 +102,7 @@ export function Dashboard({ initialData }: DashboardProps) {
           });
           triggerFlash('futures');
         }
+        await refreshSnapshot();
       },
       (status) => {
         setConnection(status === 'connected' ? 'connected' : 'reconnecting');
@@ -104,26 +116,19 @@ export function Dashboard({ initialData }: DashboardProps) {
         if (t) clearTimeout(t);
       }
     };
-  }, [triggerFlash]);
+  }, []);
 
   useEffect(() => {
-    if (connection !== 'reconnecting') return;
     let cancelled = false;
     const interval = setInterval(async () => {
-      try {
-        const res = await fetch('/api/snapshot', { cache: 'no-store' });
-        if (!res.ok) return;
-        const data = (await res.json()) as DashboardSnapshot;
-        if (!cancelled) setSnapshot(data);
-      } catch {
-        /* swallow — next tick will retry */
-      }
+      if (cancelled) return;
+      await refreshSnapshot();
     }, 60_000);
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [connection]);
+  }, []);
 
   return (
     <>
@@ -139,6 +144,7 @@ export function Dashboard({ initialData }: DashboardProps) {
           />
           <NegotiatedCard
             today={snapshot.negotiated.today}
+            cutout={snapshot.cutout.latest}
             health={healthBySource.negotiated_sales}
             data-flash={flash.negotiated ? 'true' : undefined}
             className="lg:col-span-4"
@@ -148,6 +154,15 @@ export function Dashboard({ initialData }: DashboardProps) {
             health={healthBySource.futures_snapshots}
             data-flash={flash.futures ? 'true' : undefined}
             className="lg:col-span-4"
+          />
+          <DirectionalIndicatorCard
+            signal={snapshot.market.direction}
+            className="lg:col-span-6"
+          />
+          <BidRangeCalculatorCard
+            context={snapshot.market.calculator}
+            signal={snapshot.market.direction}
+            className="lg:col-span-6"
           />
 
           <SlaughterCard

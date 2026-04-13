@@ -20,17 +20,17 @@ export function subscribeToSnapshot(
     .channel('snapshot')
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'cutout_daily' },
+      { event: '*', schema: 'public', table: 'cutout_daily' },
       (payload) => onInsert('cutout_daily', payload.new)
     )
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'negotiated_sales' },
+      { event: '*', schema: 'public', table: 'negotiated_sales' },
       (payload) => onInsert('negotiated_sales', payload.new)
     )
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'futures_snapshots' },
+      { event: '*', schema: 'public', table: 'futures_snapshots' },
       (payload) => onInsert('futures_snapshots', payload.new)
     )
     .subscribe((status) => {

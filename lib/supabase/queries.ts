@@ -8,13 +8,18 @@ import type {
   DataHealthStatus,
   DashboardSnapshot,
 } from '../types';
+import {
+  buildBidRangeCalculatorContext,
+  buildMarketDirectionSignal,
+  evaluateFuturesHealth,
+} from '../market';
 
 const STALE_MS = {
   cutout_daily: 4 * 60 * 60 * 1000,
   negotiated_sales: 4 * 60 * 60 * 1000,
   slaughter_weekly: 8 * 24 * 60 * 60 * 1000,
   cold_storage_monthly: 35 * 24 * 60 * 60 * 1000,
-  futures_snapshots: 45 * 60 * 1000,
+  futures_snapshots: 90 * 60 * 1000,
 };
 
 type HealthProbe = {
@@ -64,8 +69,8 @@ export async function getNegotiatedHistory(days: number): Promise<NegotiatedSale
   const { data, error } = await supabase
     .from('negotiated_sales')
     .select('*')
-    .gte('date', since)
-    .order('date', { ascending: false });
+    .order('date', { ascending: false })
+    .gte('date', since);
   if (error) return [];
   return (data ?? []) as NegotiatedSalesRow[];
 }
@@ -171,7 +176,7 @@ export async function getDataHealth(): Promise<DataHealthStatus[]> {
     getLastUpdated('negotiated_sales', 'created_at'),
     getLastUpdated('slaughter_weekly', 'created_at'),
     getLastUpdated('cold_storage_monthly', 'created_at'),
-    getLastUpdated('futures_snapshots', 'created_at'),
+    getLastUpdated('futures_snapshots', 'timestamp'),
   ]);
 
   function checkStale(
@@ -218,7 +223,7 @@ export async function getDataHealth(): Promise<DataHealthStatus[]> {
   return [
     checkStale('cutout_daily', cutoutUpdated, STALE_MS.cutout_daily),
     checkStale('negotiated_sales', negUpdated, STALE_MS.negotiated_sales),
-    checkStale('futures_snapshots', futuresUpdated, STALE_MS.futures_snapshots),
+    evaluateFuturesHealth('futures_snapshots', futuresUpdated),
     checkStale('slaughter_weekly', slaughterUpdated, STALE_MS.slaughter_weekly),
     checkStale('cold_storage_monthly', coldUpdated, STALE_MS.cold_storage_monthly),
   ];
@@ -235,6 +240,7 @@ export async function getSnapshot(): Promise<DashboardSnapshot> {
     slaughterHistory,
     coldStorageLatest,
     coldStorageHistory,
+    negotiatedHistory,
     health,
   ] = await Promise.all([
     getLatestCutout(),
@@ -244,6 +250,7 @@ export async function getSnapshot(): Promise<DashboardSnapshot> {
     getSlaughterHistory(4),
     getLatestColdStorage(),
     getColdStorageHistory(12),
+    getNegotiatedHistory(7),
     getDataHealth(),
   ]);
   const cutoutPrev = cutoutLatest ? await getYesterdayCutout(cutoutLatest.date) : null;
@@ -259,12 +266,26 @@ export async function getSnapshot(): Promise<DashboardSnapshot> {
     return pctSum / slaughterHistory.length;
   })();
 
+  const futuresHealth = health.find((row) => row.source === 'futures_snapshots');
+  const marketDirection = buildMarketDirectionSignal({
+    futures: futuresLatest,
+    futuresHealth,
+    negotiatedRows: negotiatedHistory,
+    coldStorage: coldStorageLatest,
+  });
+  const calculatorContext = buildBidRangeCalculatorContext({
+    negotiatedRows: negotiatedHistory,
+    cutoutChoice: cutoutLatest?.choice_total ?? null,
+    marketSignal: marketDirection,
+  });
+
   return {
     cutout: { latest: cutoutLatest, yesterday: cutoutPrev },
     negotiated: { today: negotiatedToday },
     futures: { latest: futuresLatest },
     slaughter: { latest: slaughterLatest, fourWeekAvgHeiferPct },
     coldStorage: { latest: coldStorageLatest, history: coldStorageHistory },
+    market: { direction: marketDirection, calculator: calculatorContext },
     health,
     fetchedAt: new Date().toISOString(),
   };

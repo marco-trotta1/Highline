@@ -1,5 +1,5 @@
 import type { HTMLAttributes } from 'react';
-import type { DataHealthStatus, NegotiatedSalesRow } from '@/lib/types';
+import type { CutoutDailyRow, DataHealthStatus, NegotiatedSalesRow } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { RangeBar } from '@/components/ui/RangeBar';
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -7,15 +7,20 @@ import { formatCurrency, formatInt } from '@/lib/format';
 
 type NegotiatedCardProps = HTMLAttributes<HTMLElement> & {
   today: NegotiatedSalesRow[];
+  cutout: CutoutDailyRow | null;
   health?: DataHealthStatus;
 };
 
 export function NegotiatedCard({
   today,
+  cutout,
   health,
   ...rest
 }: NegotiatedCardProps) {
-  const sessions = [...today].sort((a, b) => (a.session === 'AM' ? -1 : 1));
+  const sessions = [...today].sort((a, b) => {
+    const rank = { AM: 0, PM: 1 } as const;
+    return rank[a.session] - rank[b.session];
+  });
 
   return (
     <Card title="Negotiated Sales" {...rest}>
@@ -28,7 +33,7 @@ export function NegotiatedCard({
       ) : (
         <div className="flex flex-col gap-5">
           {sessions.map((s) => (
-            <SessionBlock key={s.id} row={s} />
+            <SessionBlock key={s.id} row={s} cutout={cutout} />
           ))}
           {health?.state === 'stale' && health.stale_reason ? (
             <p className="text-[10px] text-warn">{health.stale_reason}</p>
@@ -39,7 +44,13 @@ export function NegotiatedCard({
   );
 }
 
-function SessionBlock({ row }: { row: NegotiatedSalesRow }) {
+function SessionBlock({
+  row,
+  cutout,
+}: {
+  row: NegotiatedSalesRow;
+  cutout: CutoutDailyRow | null;
+}) {
   const isThin = row.session_quality === 'thin';
   const qualityLabel = isThin ? 'THIN' : 'ACTIVE';
   const qualityClasses = isThin
@@ -80,7 +91,16 @@ function SessionBlock({ row }: { row: NegotiatedSalesRow }) {
         </span>
       </div>
       <div className="mt-3">
-        <RangeBar low={row.low} high={row.high} value={row.weighted_avg} />
+        <RangeBar
+          low={row.low}
+          high={row.high}
+          value={row.weighted_avg}
+          referenceMarkers={
+            cutout
+              ? [{ value: cutout.choice_total, label: 'Cutout', tone: 'warn' }]
+              : []
+          }
+        />
       </div>
     </div>
   );
