@@ -14,6 +14,7 @@ import {
   getLatestColdStorage,
   getLatestFutures,
   getYesterdayCutout,
+  getSnapshot,
   getDataHealth,
 } from '../../lib/supabase/queries';
 
@@ -123,6 +124,111 @@ describe('getYesterdayCutout', () => {
     expect(chain.limit).toHaveBeenCalledWith(1);
 
     vi.useRealTimers();
+  });
+
+  it('returns the most recent cutout row strictly before the provided reference date', async () => {
+    const rows = [
+      { ...MOCK_CUTOUT, id: 'uuid-3', date: '2026-04-10', choice_total: 301.25 },
+      { ...MOCK_CUTOUT, id: 'uuid-2', date: '2026-04-11', choice_total: 302.5 },
+      { ...MOCK_CUTOUT, id: 'uuid-1', date: '2026-04-12', choice_total: 303.75 },
+    ];
+
+    let orderedRows = [...rows];
+    let limitedRows = [...rows];
+
+    const chain: Record<string, unknown> = {};
+    chain.select = vi.fn().mockReturnValue(chain);
+    chain.order = vi.fn().mockImplementation((column: string, options?: { ascending?: boolean }) => {
+      if (column === 'date') {
+        orderedRows = [...orderedRows].sort((a, b) =>
+          options?.ascending ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)
+        );
+        limitedRows = orderedRows;
+      }
+      return chain;
+    });
+    chain.lt = vi.fn().mockImplementation((column: string, value: string) => {
+      if (column === 'date') {
+        orderedRows = orderedRows.filter((row) => row.date < value);
+        limitedRows = orderedRows;
+      }
+      return chain;
+    });
+    chain.limit = vi.fn().mockImplementation((count: number) => {
+      limitedRows = orderedRows.slice(0, count);
+      return chain;
+    });
+    chain.maybeSingle = vi.fn().mockImplementation(async () => ({
+      data: limitedRows[0] ?? null,
+      error: null,
+    }));
+
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({
+      from: vi.fn().mockReturnValue(chain),
+    });
+
+    const result = await getYesterdayCutout('2026-04-12');
+
+    expect(result?.date).toBe('2026-04-11');
+    expect(result?.choice_total).toBe(302.5);
+    expect(chain.lt).toHaveBeenCalledWith('date', '2026-04-12');
+  });
+});
+
+describe('getSnapshot', () => {
+  it('uses the row before the latest cutout date for yesterday', async () => {
+    const latestCutout = { ...MOCK_CUTOUT, id: 'uuid-latest', date: '2026-04-10', choice_total: 303.75 };
+    const previousCutout = { ...MOCK_CUTOUT, id: 'uuid-prev', date: '2026-04-09', choice_total: 301.25 };
+
+    const latestCutoutChain = makeQueryChain(latestCutout);
+    const previousCutoutChain = makeQueryChain(previousCutout);
+    const negotiatedChain = makeQueryChain(null, []);
+    const futuresChain = makeQueryChain(null);
+    const slaughterLatestChain = makeQueryChain(null);
+    const slaughterHistoryChain = makeQueryChain(null, []);
+    const coldStorageLatestChain = makeQueryChain(null);
+    const coldStorageHistoryChain = makeQueryChain(null, []);
+    const healthChain = makeQueryChain({ created_at: '2026-04-10T11:05:00Z' });
+
+    let cutoutQueryCount = 0;
+    let slaughterQueryCount = 0;
+    let coldStorageQueryCount = 0;
+
+    const from = vi.fn().mockImplementation((table: string) => {
+      if (table === 'cutout_daily') {
+        cutoutQueryCount += 1;
+        if (cutoutQueryCount === 1) return latestCutoutChain;
+        if (cutoutQueryCount === 2) return healthChain;
+        if (cutoutQueryCount === 3) return previousCutoutChain;
+      }
+
+      if (table === 'negotiated_sales') return negotiatedChain;
+      if (table === 'futures_snapshots') return futuresChain;
+
+      if (table === 'slaughter_weekly') {
+        slaughterQueryCount += 1;
+        if (slaughterQueryCount === 1) return slaughterLatestChain;
+        if (slaughterQueryCount === 2) return slaughterHistoryChain;
+        return healthChain;
+      }
+
+      if (table === 'cold_storage_monthly') {
+        coldStorageQueryCount += 1;
+        if (coldStorageQueryCount === 1) return coldStorageLatestChain;
+        if (coldStorageQueryCount === 2) return coldStorageHistoryChain;
+        return healthChain;
+      }
+
+      return healthChain;
+    });
+
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({ from });
+
+    const snapshot = await getSnapshot();
+
+    expect(snapshot.cutout.latest?.date).toBe('2026-04-10');
+    expect(snapshot.cutout.yesterday?.date).toBe('2026-04-09');
+    expect(previousCutoutChain.lt).toHaveBeenCalledWith('date', '2026-04-10');
   });
 });
 
