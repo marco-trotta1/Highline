@@ -107,14 +107,14 @@ export async function getLatestFutures(): Promise<FuturesSnapshotRow | null> {
   return data as FuturesSnapshotRow;
 }
 
-export async function getYesterdayCutout(): Promise<CutoutDailyRow | null> {
+export async function getYesterdayCutout(referenceDate?: string): Promise<CutoutDailyRow | null> {
   const supabase = createServerClient();
-  const today = new Date().toISOString().split('T')[0];
+  const cutoffDate = referenceDate ?? new Date().toISOString().split('T')[0];
   const { data, error } = await supabase
     .from('cutout_daily')
     .select('*')
     .order('date', { ascending: false })
-    .lt('date', today)
+    .lt('date', cutoffDate)
     .limit(1)
     .maybeSingle();
   if (error) return null;
@@ -229,7 +229,6 @@ export async function getDataHealth(): Promise<DataHealthStatus[]> {
 export async function getSnapshot(): Promise<DashboardSnapshot> {
   const [
     cutoutLatest,
-    cutoutPrev,
     negotiatedToday,
     futuresLatest,
     slaughterLatest,
@@ -239,7 +238,6 @@ export async function getSnapshot(): Promise<DashboardSnapshot> {
     health,
   ] = await Promise.all([
     getLatestCutout(),
-    getYesterdayCutout(),
     getTodayNegotiated(),
     getLatestFutures(),
     getLatestSlaughter(),
@@ -248,6 +246,7 @@ export async function getSnapshot(): Promise<DashboardSnapshot> {
     getColdStorageHistory(12),
     getDataHealth(),
   ]);
+  const cutoutPrev = cutoutLatest ? await getYesterdayCutout(cutoutLatest.date) : null;
 
   // 4-week heifer % average from the last 4 slaughter rows.
   const fourWeekAvgHeiferPct = (() => {
