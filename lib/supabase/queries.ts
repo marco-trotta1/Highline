@@ -1,10 +1,12 @@
 import { createServerClient } from './client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   CutoutDailyRow,
   NegotiatedSalesRow,
   SlaughterWeeklyRow,
   ColdStorageMonthlyRow,
   FuturesSnapshotRow,
+  SubprimalPriceRow,
   DataHealthStatus,
   DashboardSnapshot,
 } from '../types';
@@ -227,6 +229,36 @@ export async function getDataHealth(): Promise<DataHealthStatus[]> {
     checkStale('slaughter_weekly', slaughterUpdated, STALE_MS.slaughter_weekly),
     checkStale('cold_storage_monthly', coldUpdated, STALE_MS.cold_storage_monthly),
   ];
+}
+
+export async function getSubprimalPrices(
+  supabase: SupabaseClient,
+  date: string,
+  grade: 'Choice' | 'Select' | 'Choice and Select'
+): Promise<SubprimalPriceRow[]> {
+  const { data, error } = await supabase
+    .from('subprimal_prices')
+    .select('*')
+    .eq('date', date)
+    .eq('grade', grade)
+    .order('session', { ascending: true })
+    .order('item_description', { ascending: true });
+  if (error) return [];
+  return (data ?? []) as SubprimalPriceRow[];
+}
+
+export async function getSubprimalPricesLatestDate(
+  supabase: SupabaseClient,
+  grade: 'Choice' | 'Select' | 'Choice and Select'
+): Promise<SubprimalPriceRow[]> {
+  const { data: dateRow, error: dateError } = await supabase
+    .from('subprimal_prices')
+    .select('date')
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (dateError || !dateRow) return [];
+  return getSubprimalPrices(supabase, (dateRow as { date: string }).date, grade);
 }
 
 // Single-shot aggregator used by the dashboard Server Component and the
