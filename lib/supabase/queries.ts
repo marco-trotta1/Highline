@@ -247,10 +247,8 @@ export async function getSubprimalPrices(
   return (data ?? []) as SubprimalPriceRow[];
 }
 
-export async function getSubprimalPricesLatestDate(
-  supabase: SupabaseClient,
-  grade: 'Choice' | 'Select' | 'Choice and Select'
-): Promise<SubprimalPriceRow[]> {
+export async function getSubprimalPricesLatestDate(): Promise<SubprimalPriceRow[]> {
+  const supabase = createServerClient();
   const { data: dateRow, error: dateError } = await supabase
     .from('subprimal_prices')
     .select('date')
@@ -258,7 +256,14 @@ export async function getSubprimalPricesLatestDate(
     .limit(1)
     .maybeSingle();
   if (dateError || !dateRow) return [];
-  return getSubprimalPrices(supabase, (dateRow as { date: string }).date, grade);
+  const { data, error } = await supabase
+    .from('subprimal_prices')
+    .select('*')
+    .eq('date', (dateRow as { date: string }).date)
+    .order('session', { ascending: true })
+    .order('item_description', { ascending: true });
+  if (error) return [];
+  return (data ?? []) as SubprimalPriceRow[];
 }
 
 // Single-shot aggregator used by the dashboard Server Component and the
