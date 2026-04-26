@@ -181,6 +181,21 @@ export interface BidRangeOutput {
   }>;
 }
 
+export interface SubprimalPriceRow {
+  id: string;
+  date: string;
+  session: 'AM' | 'PM';
+  grade: 'Choice' | 'Select' | 'Choice and Select';
+  item_description: string;
+  number_trades: number | null;
+  total_pounds: number | null;
+  price_range_low: number | null;
+  price_range_high: number | null;
+  weighted_average: number | null;
+  source_hash: string | null;
+  created_at: string;
+}
+
 // Everything the dashboard Server Component fetches in one shot.
 export interface DashboardSnapshot {
   cutout: {
