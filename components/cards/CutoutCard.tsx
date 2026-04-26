@@ -23,6 +23,7 @@ export function CutoutCard({
     <Card
       title="Cutout"
       subtitle={latest ? formatDateShort(latest.date) : undefined}
+      description="Total boxed beef value — the benchmark everything else prices off."
       {...rest}
     >
       {latest ? (

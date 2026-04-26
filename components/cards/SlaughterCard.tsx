@@ -17,7 +17,7 @@ export function SlaughterCard({
 }: SlaughterCardProps) {
   if (!latest) {
     return (
-      <Card title="Slaughter Mix" {...rest}>
+      <Card title="Slaughter Mix" description="Heifer % this week — more heifers now means tighter cattle supply down the road." {...rest}>
         <div className="flex h-24 items-center justify-center text-sm text-text-muted">
           {health?.state === 'error'
             ? 'Error loading slaughter data'
@@ -37,6 +37,7 @@ export function SlaughterCard({
     <Card
       title="Slaughter Mix"
       subtitle={`Week ending ${formatDateShort(latest.week_ending)}`}
+      description="Heifer % this week — more heifers now means tighter cattle supply down the road."
       {...rest}
     >
       <div className="flex h-3 w-full overflow-hidden rounded-full border border-border">

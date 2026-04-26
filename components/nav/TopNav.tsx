@@ -57,7 +57,7 @@ export function TopNav({ health = [], connection = 'connected' }: TopNavProps) {
             priority
             className="h-8 w-auto"
           />
-          <span className="font-sans text-sm font-semibold tracking-[0.25em] text-text/70">
+          <span className="font-sans text-sm font-semibold leading-none tracking-[0.25em] text-text/70">
             HIGHLINE
           </span>
         </Link>

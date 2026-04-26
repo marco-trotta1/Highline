@@ -42,7 +42,7 @@ export function BidRangeCalculatorCard({
       : `${formatCurrency(output.benchmark)} benchmark`;
 
   return (
-    <Card title="Bid Range Calculator" className={className}>
+    <Card title="Bid Range Calculator" description="Your number. What to bid live cattle today, calculated from current market signals." className={className}>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Grade">
           <select

@@ -18,7 +18,7 @@ export function ColdStorageCard({
 }: ColdStorageCardProps) {
   if (!latest) {
     return (
-      <Card title="Cold Storage" {...rest}>
+      <Card title="Cold Storage" description="Frozen beef inventory vs. the 5-year average — high stock means downward price pressure." {...rest}>
         <div className="flex h-24 items-center justify-center text-sm text-text-muted">
           {health?.state === 'error'
             ? 'Error loading cold storage data'
@@ -55,6 +55,7 @@ export function ColdStorageCard({
     <Card
       title="Cold Storage"
       subtitle={formatMonthYear(latest.month, latest.year)}
+      description="Frozen beef inventory vs. the 5-year average — high stock means downward price pressure."
       {...rest}
     >
       <div className="flex items-baseline gap-3">
