@@ -23,7 +23,7 @@ export function NegotiatedCard({
   });
 
   return (
-    <Card title="Negotiated Sales" {...rest}>
+    <Card title="Negotiated Sales" description="Live cash deals between packers and feedlots — what the market is actually paying right now." {...rest}>
       {sessions.length === 0 ? (
         <div className="flex h-24 items-center justify-center text-sm text-text-muted">
           {health?.state === 'error'

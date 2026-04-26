@@ -11,7 +11,7 @@ type FuturesCardProps = HTMLAttributes<HTMLElement> & {
 
 export function FuturesCard({ latest, health, ...rest }: FuturesCardProps) {
   return (
-    <Card title="Live Cattle Futures" {...rest}>
+    <Card title="Live Cattle Futures" description="Where traders expect cattle prices to land — your forward directional signal." {...rest}>
       {latest ? (
         <>
           <div className="mb-1 text-xs text-text-muted">

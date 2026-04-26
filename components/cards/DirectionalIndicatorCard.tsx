@@ -17,7 +17,7 @@ export function DirectionalIndicatorCard({
   ...rest
 }: DirectionalIndicatorCardProps) {
   return (
-    <Card title="Directional Indicator" {...rest}>
+    <Card title="Directional Indicator" description="Buyer's market or seller's market? Composite read from futures, cash sales, and inventory." {...rest}>
       {!signal ? (
         <div className="flex h-24 items-center justify-center text-sm text-text-muted">
           Not enough market data yet
