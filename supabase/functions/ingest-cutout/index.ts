@@ -3,6 +3,10 @@
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 import { getServiceClient } from '../_shared/supabase-client.ts';
 import { writeIngestionLog, sha256Deno } from '../_shared/log.ts';
+import {
+  checkSourceHashDuplicate,
+  respondIngestFailure,
+} from '../_shared/ingest.ts';
 
 type RawRow = Record<string, string | number | null | undefined>;
 type SubprimalRow = {
@@ -168,16 +172,13 @@ serve(async (_req: Request) => {
 
     sourceHash = await sha256Deno(JSON.stringify(payload));
 
-    const { data: existing } = await supabase
-      .from('cutout_daily')
-      .select('id')
-      .eq('source_hash', sourceHash)
-      .single();
-
-    if (existing) {
-      await writeIngestionLog({ source: SOURCE, source_hash: sourceHash, status: 'duplicate', records_inserted: 0 });
-      return new Response(JSON.stringify({ status: 'duplicate' }), { status: 200 });
-    }
+    const duplicate = await checkSourceHashDuplicate(
+      supabase,
+      'cutout_daily',
+      SOURCE,
+      sourceHash
+    );
+    if (duplicate) return duplicate;
 
     const summaryRow = requireSection(payload, 'Summary')[0];
     const currentValuesRow = requireSection(payload, 'Current Cutout Values')[0];
@@ -237,7 +238,6 @@ serve(async (_req: Request) => {
     return new Response(JSON.stringify({ status: 'success', records_inserted: 1, subprimal_counts }), { status: 200 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    await writeIngestionLog({ source: SOURCE, source_hash: sourceHash, status: 'failed', error_message: message, records_inserted: 0 });
-    return new Response(JSON.stringify({ status: 'failed', error: message }), { status: 500 });
+    return respondIngestFailure(SOURCE, sourceHash, { message });
   }
 });
