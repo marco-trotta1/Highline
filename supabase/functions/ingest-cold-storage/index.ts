@@ -2,7 +2,12 @@
 // deno-lint-ignore-file no-explicit-any
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 import { getServiceClient } from '../_shared/supabase-client.ts';
-import { writeIngestionLog, sha256Deno } from '../_shared/log.ts';
+import { sha256Deno } from '../_shared/log.ts';
+import {
+  checkSourceHashDuplicate,
+  respondIngestFailure,
+  respondIngestSuccess,
+} from '../_shared/ingest.ts';
 
 const NASS_ENDPOINT = 'https://quickstats.nass.usda.gov/api/api_GET/';
 const SOURCE = 'usda_cold_storage';
@@ -84,16 +89,13 @@ serve(async (_req: Request) => {
 
     const total_beef_million_lbs = parseFloat((valueLbs / 1_000_000).toFixed(4));
 
-    const { data: existing } = await supabase
-      .from('cold_storage_monthly')
-      .select('id')
-      .eq('source_hash', sourceHash)
-      .single();
-
-    if (existing) {
-      await writeIngestionLog({ source: SOURCE, source_hash: sourceHash, status: 'duplicate', records_inserted: 0 });
-      return new Response(JSON.stringify({ status: 'duplicate' }), { status: 200 });
-    }
+    const duplicate = await checkSourceHashDuplicate(
+      supabase,
+      'cold_storage_monthly',
+      SOURCE,
+      sourceHash
+    );
+    if (duplicate) return duplicate;
 
     const { data: historical } = await supabase
       .from('cold_storage_monthly')
@@ -118,10 +120,8 @@ serve(async (_req: Request) => {
 
     if (error) throw new Error(`DB insert failed: ${error.message}`);
 
-    await writeIngestionLog({ source: SOURCE, source_hash: sourceHash, status: 'success', records_inserted: 1 });
-    return new Response(JSON.stringify({ status: 'success', records_inserted: 1 }), { status: 200 });
+    return respondIngestSuccess(SOURCE, sourceHash);
   } catch (err: any) {
-    await writeIngestionLog({ source: SOURCE, source_hash: sourceHash, status: 'failed', error_message: err.message, records_inserted: 0 });
-    return new Response(JSON.stringify({ status: 'failed', error: err.message }), { status: 500 });
+    return respondIngestFailure(SOURCE, sourceHash, err);
   }
 });

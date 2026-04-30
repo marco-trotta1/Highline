@@ -2,7 +2,12 @@
 // deno-lint-ignore-file no-explicit-any
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 import { getServiceClient } from '../_shared/supabase-client.ts';
-import { writeIngestionLog, sha256Deno } from '../_shared/log.ts';
+import { sha256Deno } from '../_shared/log.ts';
+import {
+  checkSourceHashDuplicate,
+  respondIngestFailure,
+  respondIngestSuccess,
+} from '../_shared/ingest.ts';
 
 const QUICK_STATS_URL = 'https://quickstats.nass.usda.gov/api/api_GET/';
 const SOURCE = 'usda_slaughter';
@@ -84,16 +89,13 @@ serve(async (_req: Request) => {
 
     sourceHash = await sha256Deno(JSON.stringify(payload));
 
-    const { data: existing } = await supabase
-      .from('slaughter_weekly')
-      .select('id')
-      .eq('source_hash', sourceHash)
-      .single();
-
-    if (existing) {
-      await writeIngestionLog({ source: SOURCE, source_hash: sourceHash, status: 'duplicate', records_inserted: 0 });
-      return new Response(JSON.stringify({ status: 'duplicate' }), { status: 200 });
-    }
+    const duplicate = await checkSourceHashDuplicate(
+      supabase,
+      'slaughter_weekly',
+      SOURCE,
+      sourceHash
+    );
+    if (duplicate) return duplicate;
 
     const latestWeek = payload.data
       .map(rowWeekEnding)
@@ -154,10 +156,8 @@ serve(async (_req: Request) => {
 
     if (error) throw new Error(`DB insert failed: ${error.message}`);
 
-    await writeIngestionLog({ source: SOURCE, source_hash: sourceHash, status: 'success', records_inserted: 1 });
-    return new Response(JSON.stringify({ status: 'success', records_inserted: 1 }), { status: 200 });
+    return respondIngestSuccess(SOURCE, sourceHash);
   } catch (err: any) {
-    await writeIngestionLog({ source: SOURCE, source_hash: sourceHash, status: 'failed', error_message: err.message, records_inserted: 0 });
-    return new Response(JSON.stringify({ status: 'failed', error: err.message }), { status: 500 });
+    return respondIngestFailure(SOURCE, sourceHash, err);
   }
 });

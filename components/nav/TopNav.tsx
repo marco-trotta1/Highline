@@ -3,47 +3,36 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { StatusDot } from '@/components/ui/StatusDot';
 import type { DataHealthStatus } from '@/lib/types';
 
 type ConnectionStatus = 'connected' | 'reconnecting';
+type OverallStatus = 'fresh' | 'stale' | 'no_data' | 'error';
 
 type TopNavProps = {
   health?: DataHealthStatus[];
   connection?: ConnectionStatus;
 };
 
-function overallHealth(
-  health: DataHealthStatus[]
-): 'healthy' | 'stale' | 'no_data' | 'error' {
+function overallHealth(health: DataHealthStatus[]): OverallStatus {
   if (health.length === 0) return 'error';
-  const errorCount = health.filter((h) => h.state === 'error').length;
-  const staleCount = health.filter((h) => h.state === 'stale').length;
-  const noDataCount = health.filter((h) => h.state === 'no_data').length;
-  if (errorCount > 0) return 'error';
-  if (staleCount > 0) return 'stale';
-  if (noDataCount > 0) return 'no_data';
-  return 'healthy';
+  if (health.some((h) => h.state === 'error')) return 'error';
+  if (health.some((h) => h.state === 'stale')) return 'stale';
+  if (health.some((h) => h.state === 'no_data')) return 'no_data';
+  return 'fresh';
+}
+
+function statusLabel(status: OverallStatus, health: DataHealthStatus[]): string {
+  if (status === 'fresh') return 'All data fresh';
+  if (status === 'stale') return `${health.filter((h) => h.state === 'stale').length} source(s) stale`;
+  if (status === 'no_data') return `${health.filter((h) => h.state === 'no_data').length} source(s) awaiting first load`;
+  return 'Data errors';
 }
 
 export function TopNav({ health = [], connection = 'connected' }: TopNavProps) {
   const pathname = usePathname();
   const status = overallHealth(health);
-  const dotColor =
-    status === 'healthy'
-      ? 'bg-bull'
-      : status === 'stale'
-        ? 'bg-warn'
-        : status === 'no_data'
-          ? 'bg-text-muted'
-          : 'bg-bear';
-  const dotLabel =
-    status === 'healthy'
-      ? 'All data fresh'
-      : status === 'stale'
-        ? `${health.filter((h) => h.state === 'stale').length} source(s) stale`
-        : status === 'no_data'
-          ? `${health.filter((h) => h.state === 'no_data').length} source(s) awaiting first load`
-          : 'Data errors';
+  const label = statusLabel(status, health);
 
   return (
     <nav className="sticky top-0 z-50 flex h-14 items-center justify-between gap-4 border-b border-border bg-bg/90 px-4 backdrop-blur-sm sm:px-6">
@@ -94,17 +83,10 @@ export function TopNav({ health = [], connection = 'connected' }: TopNavProps) {
         ) : null}
 
         {health.length > 0 && (
-          <div
-            className="flex items-center gap-2"
-            title={dotLabel}
-            aria-label={dotLabel}
-          >
-            <span
-              className={`h-2.5 w-2.5 rounded-full ${dotColor}`}
-              data-pulse={status === 'healthy' ? 'true' : 'false'}
-            />
+          <div className="flex items-center gap-2" title={label} aria-label={label}>
+            <StatusDot status={status} pulse={status === 'fresh'} size="md" />
             <span className="hidden text-xs text-text-muted sm:inline">
-              {dotLabel}
+              {label}
             </span>
           </div>
         )}

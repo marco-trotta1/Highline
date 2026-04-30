@@ -13,21 +13,13 @@ import type {
 import {
   buildBidRangeCalculatorContext,
   buildMarketDirectionSignal,
-  evaluateFuturesHealth,
 } from '../market';
-
-const STALE_MS = {
-  cutout_daily: 4 * 60 * 60 * 1000,
-  negotiated_sales: 4 * 60 * 60 * 1000,
-  slaughter_weekly: 8 * 24 * 60 * 60 * 1000,
-  cold_storage_monthly: 35 * 24 * 60 * 60 * 1000,
-  futures_snapshots: 90 * 60 * 1000,
-};
-
-type HealthProbe = {
-  lastUpdated: string | null;
-  errorMessage: string | null;
-};
+import {
+  STALE_MS,
+  checkStale,
+  evaluateFuturesHealth,
+  getLastUpdated,
+} from './health';
 
 export async function getLatestCutout(): Promise<CutoutDailyRow | null> {
   const supabase = createServerClient();
@@ -155,79 +147,20 @@ export async function getDataHealth(): Promise<DataHealthStatus[]> {
   const supabase = createServerClient();
   const now = Date.now();
 
-  async function getLastUpdated(table: string, timestampCol: string): Promise<HealthProbe> {
-    const { data, error } = await supabase
-      .from(table)
-      .select(timestampCol)
-      .order(timestampCol, { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      return { lastUpdated: null, errorMessage: error.message };
-    }
-
-    return {
-      lastUpdated: (data as Record<string, string> | null)?.[timestampCol] ?? null,
-      errorMessage: null,
-    };
-  }
-
   const [cutoutUpdated, negUpdated, slaughterUpdated, coldUpdated, futuresUpdated] = await Promise.all([
-    getLastUpdated('cutout_daily', 'created_at'),
-    getLastUpdated('negotiated_sales', 'created_at'),
-    getLastUpdated('slaughter_weekly', 'created_at'),
-    getLastUpdated('cold_storage_monthly', 'created_at'),
-    getLastUpdated('futures_snapshots', 'timestamp'),
+    getLastUpdated(supabase, 'cutout_daily', 'created_at'),
+    getLastUpdated(supabase, 'negotiated_sales', 'created_at'),
+    getLastUpdated(supabase, 'slaughter_weekly', 'created_at'),
+    getLastUpdated(supabase, 'cold_storage_monthly', 'created_at'),
+    getLastUpdated(supabase, 'futures_snapshots', 'timestamp'),
   ]);
 
-  function checkStale(
-    source: string,
-    probe: HealthProbe,
-    thresholdMs: number
-  ): DataHealthStatus {
-    if (probe.errorMessage) {
-      return {
-        source,
-        state: 'error',
-        last_updated: null,
-        stale: false,
-        stale_reason: 'Query failed',
-        error_message: probe.errorMessage,
-      };
-    }
-
-    const { lastUpdated } = probe;
-
-    if (!lastUpdated) {
-      return {
-        source,
-        state: 'no_data',
-        last_updated: null,
-        stale: false,
-        stale_reason: 'No data yet',
-        error_message: null,
-      };
-    }
-
-    const age = now - new Date(lastUpdated).getTime();
-    const stale = age > thresholdMs;
-    return {
-      source,
-      state: stale ? 'stale' : 'fresh',
-      last_updated: lastUpdated,
-      stale,
-      stale_reason: stale ? `Last update was ${Math.round(age / 60000)} minutes ago` : null,
-      error_message: null,
-    };
-  }
-
   return [
-    checkStale('cutout_daily', cutoutUpdated, STALE_MS.cutout_daily),
-    checkStale('negotiated_sales', negUpdated, STALE_MS.negotiated_sales),
+    checkStale('cutout_daily', cutoutUpdated, STALE_MS.cutout_daily, now),
+    checkStale('negotiated_sales', negUpdated, STALE_MS.negotiated_sales, now),
     evaluateFuturesHealth('futures_snapshots', futuresUpdated),
-    checkStale('slaughter_weekly', slaughterUpdated, STALE_MS.slaughter_weekly),
-    checkStale('cold_storage_monthly', coldUpdated, STALE_MS.cold_storage_monthly),
+    checkStale('slaughter_weekly', slaughterUpdated, STALE_MS.slaughter_weekly, now),
+    checkStale('cold_storage_monthly', coldUpdated, STALE_MS.cold_storage_monthly, now),
   ];
 }
 
