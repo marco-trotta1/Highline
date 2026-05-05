@@ -284,6 +284,7 @@ export function Dashboard({ initialData }: DashboardProps) {
           />
           <DirectionalIndicatorCard
             signal={snapshot.market.direction}
+            signalSnapshot={snapshot.market.latestSignalSnapshot}
             className="lg:col-span-6"
           />
           <BidRangeCalculatorCard

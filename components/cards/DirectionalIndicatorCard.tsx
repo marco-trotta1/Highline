@@ -1,9 +1,18 @@
-import type { HTMLAttributes } from 'react';
-import type { MarketDirectionSignal } from '@/lib/types';
+'use client';
+
+import { useState, type HTMLAttributes, type ReactNode } from 'react';
+import type { MarketDirectionSignal, SignalSnapshotRow } from '@/lib/types';
+import {
+  formatCurrency,
+  formatInt,
+  formatPct,
+  formatSignedPct,
+} from '@/lib/format';
 import { Card } from '@/components/ui/Card';
 
 type DirectionalIndicatorCardProps = HTMLAttributes<HTMLElement> & {
   signal: MarketDirectionSignal | null;
+  signalSnapshot: SignalSnapshotRow | null;
 };
 
 const TONE_STYLES = {
@@ -14,8 +23,11 @@ const TONE_STYLES = {
 
 export function DirectionalIndicatorCard({
   signal,
+  signalSnapshot,
   ...rest
 }: DirectionalIndicatorCardProps) {
+  const [whyOpen, setWhyOpen] = useState(false);
+
   return (
     <Card title="Directional Indicator" description="Buyer's market or seller's market? Composite read from futures, cash sales, and inventory." {...rest}>
       {!signal ? (
@@ -41,6 +53,26 @@ export function DirectionalIndicatorCard({
               {signal.confidence_label} {signal.confidence_pct}%
             </span>
           </div>
+
+          {signalSnapshot ? (
+            <div className="mt-3">
+              <button
+                type="button"
+                className="rounded border border-border px-2 py-1 text-[11px] font-medium text-text-muted transition-colors hover:border-text-muted/50 hover:text-text"
+                aria-expanded={whyOpen}
+                onClick={() => setWhyOpen((open) => !open)}
+              >
+                Why?
+              </button>
+              <div
+                className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-out ${
+                  whyOpen ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'
+                }`}
+              >
+                <SignalWhyPanel snapshot={signalSnapshot} />
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-4 space-y-3">
             {signal.drivers.map((driver) => (
@@ -71,5 +103,67 @@ export function DirectionalIndicatorCard({
         </>
       )}
     </Card>
+  );
+}
+
+function formatSignalValue(value: number | null | undefined): string {
+  if (value == null) return '—';
+  return value.toFixed(2);
+}
+
+function formatWeight(value: number | null | undefined): string {
+  if (value == null) return '—';
+  return formatPct(value * 100, 0);
+}
+
+function SignalWhyPanel({ snapshot }: { snapshot: SignalSnapshotRow }) {
+  return (
+    <div className="mt-3 space-y-1.5 border-t border-border/60 pt-3 text-xs leading-5 text-text-muted">
+      <AuditLine label="Futures">
+        price <Mono>{formatCurrency(snapshot.futures_price)}</Mono>, change{' '}
+        <Mono>{formatSignedPct(snapshot.futures_change_pct, 2)}</Mono> → signal{' '}
+        <Mono>{formatSignalValue(snapshot.futures_signal)}</Mono> (weight:{' '}
+        <Mono>{formatWeight(snapshot.futures_weight)}</Mono>)
+      </AuditLine>
+      <AuditLine label="Negotiated cash">
+        avg <Mono>{formatCurrency(snapshot.negotiated_weighted_avg)}</Mono>,{' '}
+        <Mono>{formatInt(snapshot.negotiated_volume_loads)}</Mono> loads,{' '}
+        <Mono>{snapshot.negotiated_session_quality ?? '—'}</Mono> → signal{' '}
+        <Mono>{formatSignalValue(snapshot.negotiated_signal)}</Mono> (weight:{' '}
+        <Mono>{formatWeight(snapshot.negotiated_weight)}</Mono>)
+      </AuditLine>
+      <AuditLine label="Cold storage">
+        <Mono>{formatSignedPct(snapshot.cold_storage_vs_5yr_avg_pct, 1)}</Mono> vs
+        5yr avg → signal{' '}
+        <Mono>{formatSignalValue(snapshot.cold_storage_signal)}</Mono> (weight:{' '}
+        <Mono>{formatWeight(snapshot.cold_storage_weight)}</Mono>)
+      </AuditLine>
+      <AuditLine label="Composite score">
+        <Mono>{formatSignalValue(snapshot.composite_score)}</Mono> →{' '}
+        <Mono>{snapshot.direction}</Mono> at{' '}
+        <Mono>{formatPct(snapshot.confidence * 100, 0)}</Mono> confidence
+      </AuditLine>
+    </div>
+  );
+}
+
+function AuditLine({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <span className="font-semibold text-text-muted/80">{label}: </span>
+      {children}
+    </div>
+  );
+}
+
+function Mono({ children }: { children: ReactNode }) {
+  return (
+    <span className="font-mono tabular-nums text-text">{children}</span>
   );
 }

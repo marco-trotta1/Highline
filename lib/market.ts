@@ -15,6 +15,8 @@ import type {
   MarketDriverSignal,
   MarketTone,
   NegotiatedSalesRow,
+  SignalSnapshotDirection,
+  SignalSnapshotInsert,
 } from './types';
 import type { DataHealthStatus } from './types';
 
@@ -69,6 +71,12 @@ function toneFromScore(score: number, threshold = 0.2): MarketTone {
 function toneLabel(tone: MarketTone): string {
   if (tone === 'bull') return 'Bull';
   if (tone === 'bear') return 'Bear';
+  return 'Neutral';
+}
+
+function signalDirectionFromTone(tone: MarketTone): SignalSnapshotDirection {
+  if (tone === 'bull') return 'Bullish';
+  if (tone === 'bear') return 'Bearish';
   return 'Neutral';
 }
 
@@ -167,6 +175,45 @@ export function buildMarketDirectionSignal(params: {
     score: Number(weightedScore.toFixed(3)),
     summary,
     drivers,
+  };
+}
+
+export function buildSignalSnapshotInsert(params: {
+  futures: FuturesSnapshotRow | null;
+  negotiatedRows: NegotiatedSalesRow[];
+  coldStorage: ColdStorageMonthlyRow | null;
+  marketSignal: MarketDirectionSignal | null;
+}): SignalSnapshotInsert | null {
+  if (!params.marketSignal) return null;
+
+  const { latest } = latestNegotiatedPair(params.negotiatedRows);
+  const futuresDriver = params.marketSignal.drivers.find(
+    (driver) => driver.key === 'futures'
+  );
+  const negotiatedDriver = params.marketSignal.drivers.find(
+    (driver) => driver.key === 'negotiated'
+  );
+  const coldStorageDriver = params.marketSignal.drivers.find(
+    (driver) => driver.key === 'cold_storage'
+  );
+
+  return {
+    direction: signalDirectionFromTone(params.marketSignal.tone),
+    confidence: Number((params.marketSignal.confidence_pct / 100).toFixed(4)),
+    futures_price: params.futures?.front_month_price ?? null,
+    futures_change_pct: params.futures?.change_pct ?? null,
+    futures_weight: futuresDriver?.weight ?? 0.45,
+    futures_signal: futuresDriver?.score ?? null,
+    negotiated_weighted_avg: latest?.weighted_avg ?? null,
+    negotiated_volume_loads: latest?.volume_loads ?? null,
+    negotiated_session_quality: latest?.session_quality ?? null,
+    negotiated_weight: negotiatedDriver?.weight ?? 0.35,
+    negotiated_signal: negotiatedDriver?.score ?? null,
+    cold_storage_vs_5yr_avg_pct: params.coldStorage?.vs_5yr_avg_pct ?? null,
+    cold_storage_weight: coldStorageDriver?.weight ?? 0.2,
+    cold_storage_signal: coldStorageDriver?.score ?? null,
+    composite_score: params.marketSignal.score,
+    notes: params.marketSignal.summary,
   };
 }
 

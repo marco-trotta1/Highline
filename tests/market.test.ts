@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildBidRangeCalculatorContext,
   buildMarketDirectionSignal,
+  buildSignalSnapshotInsert,
   calculateBidRange,
   evaluateFuturesHealth,
 } from '../lib/market';
@@ -102,6 +103,37 @@ describe('market signals', () => {
     expect(signal?.tone).toBe('bull');
     expect(signal?.confidence_pct).toBeGreaterThanOrEqual(60);
     expect(signal?.drivers).toHaveLength(3);
+  });
+
+  it('captures the component inputs used by the directional signal', () => {
+    const signal = buildMarketDirectionSignal({
+      futures: FUTURES_SAMPLE,
+      futuresHealth: {
+        source: 'futures_snapshots',
+        state: 'fresh',
+        last_updated: FUTURES_SAMPLE.timestamp,
+        stale: false,
+        stale_reason: null,
+        error_message: null,
+      },
+      negotiatedRows: NEGOTIATED_ROWS,
+      coldStorage: COLD_STORAGE_SAMPLE,
+    });
+
+    const snapshot = buildSignalSnapshotInsert({
+      futures: FUTURES_SAMPLE,
+      negotiatedRows: NEGOTIATED_ROWS,
+      coldStorage: COLD_STORAGE_SAMPLE,
+      marketSignal: signal,
+    });
+
+    expect(snapshot?.direction).toBe('Bullish');
+    expect(snapshot?.confidence).toBeGreaterThan(0);
+    expect(snapshot?.confidence).toBeLessThanOrEqual(1);
+    expect(snapshot?.futures_price).toBe(FUTURES_SAMPLE.front_month_price);
+    expect(snapshot?.negotiated_weighted_avg).toBe(NEGOTIATED_ROWS[0].weighted_avg);
+    expect(snapshot?.cold_storage_vs_5yr_avg_pct).toBe(COLD_STORAGE_SAMPLE.vs_5yr_avg_pct);
+    expect(snapshot?.composite_score).toBe(signal?.score);
   });
 
   it('builds a bid range around the negotiated benchmark with market adjustments', () => {
