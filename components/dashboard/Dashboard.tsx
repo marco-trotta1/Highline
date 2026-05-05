@@ -17,6 +17,7 @@ import { DataHealthPanel } from '@/components/cards/DataHealthPanel';
 import { DirectionalIndicatorCard } from '@/components/cards/DirectionalIndicatorCard';
 import { BidRangeCalculatorCard } from '@/components/cards/BidRangeCalculatorCard';
 import { subscribeToSnapshot } from '@/lib/supabase/realtime';
+import { createBrowserClient } from '@/lib/supabase/client';
 
 type DashboardProps = {
   initialData: DashboardSnapshot;
@@ -24,10 +25,79 @@ type DashboardProps = {
 
 type FlashKey = 'cutout' | 'negotiated' | 'futures';
 type ConnectionStatus = 'connected' | 'reconnecting';
+type FreshnessSource = 'cutout' | 'negotiated' | 'slaughter' | 'futures';
+type FreshnessSeverity = 'failed' | 'stale';
+type IngestionLogRow = {
+  source: string;
+  timestamp: string;
+  status: 'success' | 'failed' | 'duplicate';
+};
+type FreshnessWarning = {
+  source: FreshnessSource;
+  hoursAgo: number | null;
+  severity: FreshnessSeverity;
+  signature: string;
+};
+
+const FRESHNESS_STALE_MS = 4 * 60 * 60 * 1000;
+const FRESHNESS_DISMISS_KEY = 'highline:freshness-warning-dismissed';
+const FRESHNESS_SOURCE_ALIASES: Record<FreshnessSource, string[]> = {
+  cutout: ['cutout', 'usda_cutout'],
+  negotiated: ['negotiated', 'usda_negotiated'],
+  slaughter: ['slaughter', 'usda_slaughter'],
+  futures: ['futures', 'usda_futures_agribeef'],
+};
+
+function sourceLabel(source: FreshnessSource): string {
+  return source.replace('_', ' ');
+}
+
+function buildFreshnessWarning(rows: IngestionLogRow[]): FreshnessWarning | null {
+  const now = Date.now();
+  const warnings: FreshnessWarning[] = [];
+
+  for (const [source, aliases] of Object.entries(FRESHNESS_SOURCE_ALIASES) as Array<[FreshnessSource, string[]]>) {
+    const sourceRows = rows
+      .filter((row) => aliases.includes(row.source))
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const latest = sourceRows[0];
+    const latestSuccess = sourceRows.find((row) => row.status === 'success');
+    const lastSuccessMs = latestSuccess ? new Date(latestSuccess.timestamp).getTime() : Number.NaN;
+    const hoursAgo = Number.isFinite(lastSuccessMs)
+      ? Math.max(0, Math.round((now - lastSuccessMs) / (60 * 60 * 1000)))
+      : null;
+
+    if (latest?.status === 'failed') {
+      warnings.push({
+        source,
+        hoursAgo,
+        severity: 'failed',
+        signature: `${source}:failed:${latest.timestamp}`,
+      });
+      continue;
+    }
+
+    if (!latestSuccess || now - lastSuccessMs > FRESHNESS_STALE_MS) {
+      warnings.push({
+        source,
+        hoursAgo,
+        severity: 'stale',
+        signature: `${source}:stale:${latestSuccess?.timestamp ?? 'none'}`,
+      });
+    }
+  }
+
+  return warnings.sort((a, b) => {
+    if (a.severity !== b.severity) return a.severity === 'failed' ? -1 : 1;
+    return (b.hoursAgo ?? Number.POSITIVE_INFINITY) - (a.hoursAgo ?? Number.POSITIVE_INFINITY);
+  })[0] ?? null;
+}
 
 export function Dashboard({ initialData }: DashboardProps) {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(initialData);
   const [connection, setConnection] = useState<ConnectionStatus>('connected');
+  const [freshnessWarning, setFreshnessWarning] = useState<FreshnessWarning | null>(null);
+  const [dismissedFreshnessSignature, setDismissedFreshnessSignature] = useState<string | null>(null);
   const [flash, setFlash] = useState<Record<FlashKey, boolean>>({
     cutout: false,
     negotiated: false,
@@ -62,6 +132,35 @@ export function Dashboard({ initialData }: DashboardProps) {
       /* swallow — next refresh will retry */
     }
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createBrowserClient();
+    const aliases = Object.values(FRESHNESS_SOURCE_ALIASES).flat();
+
+    const loadFreshness = async () => {
+      const { data, error } = await supabase
+        .from('ingestion_log')
+        .select('source,timestamp,status')
+        .in('source', aliases)
+        .order('timestamp', { ascending: false })
+        .limit(100);
+
+      if (cancelled || error) return;
+      const warning = buildFreshnessWarning((data ?? []) as IngestionLogRow[]);
+      if (!warning) localStorage.removeItem(FRESHNESS_DISMISS_KEY);
+      setDismissedFreshnessSignature(localStorage.getItem(FRESHNESS_DISMISS_KEY));
+      setFreshnessWarning(warning);
+    };
+
+    void loadFreshness();
+    const interval = setInterval(loadFreshness, 60_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     const timersAtCleanup = flashTimers.current;
@@ -135,6 +234,34 @@ export function Dashboard({ initialData }: DashboardProps) {
       <TopNav health={snapshot.health} connection={connection} />
       <main className="mx-auto w-full max-w-7xl px-4 pb-[env(safe-area-inset-bottom)] pt-6 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
+          {freshnessWarning && freshnessWarning.signature !== dismissedFreshnessSignature ? (
+            <div className="lg:col-span-12">
+              <div
+                className={`flex items-start justify-between gap-3 rounded-md border px-4 py-3 text-sm ${
+                  freshnessWarning.severity === 'failed'
+                    ? 'border-red-700/30 bg-red-50 text-red-700'
+                    : 'border-amber-700/30 bg-amber-50 text-amber-700'
+                }`}
+              >
+                <p>
+                  ⚠ Data warning: {sourceLabel(freshnessWarning.source)} last updated{' '}
+                  {freshnessWarning.hoursAgo === null ? 'never' : `${freshnessWarning.hoursAgo}h ago`}{' '}
+                  — signals may be stale
+                </p>
+                <button
+                  type="button"
+                  aria-label="Dismiss data warning"
+                  className="shrink-0 rounded px-2 font-semibold leading-5 hover:bg-black/5"
+                  onClick={() => {
+                    localStorage.setItem(FRESHNESS_DISMISS_KEY, freshnessWarning.signature);
+                    setDismissedFreshnessSignature(freshnessWarning.signature);
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          ) : null}
           <CutoutCard
             latest={snapshot.cutout.latest}
             yesterday={snapshot.cutout.yesterday}
