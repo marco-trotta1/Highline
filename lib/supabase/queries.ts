@@ -9,6 +9,10 @@ import type {
   SubprimalPriceRow,
   DataHealthStatus,
   DashboardSnapshot,
+  InternalPriceRow,
+  PerformanceDataRow,
+  PerformancePrimal,
+  PerformanceSummary,
 } from '../types';
 import {
   buildBidRangeCalculatorContext,
@@ -197,6 +201,148 @@ export async function getSubprimalPricesLatestDate(): Promise<SubprimalPriceRow[
     .order('item_description', { ascending: true });
   if (error) return [];
   return (data ?? []) as SubprimalPriceRow[];
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function dateDaysAgo(days: number): string {
+  return new Date(Date.now() - days * DAY_MS).toISOString().split('T')[0];
+}
+
+function asFiniteNumber(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getCutoutPrimalValue(
+  cutout: CutoutDailyRow,
+  primal: PerformancePrimal
+): number | null {
+  return asFiniteNumber(cutout[primal]);
+}
+
+function average(values: Array<number | null | undefined>): number | null {
+  const valid = values.filter((value): value is number => value != null && Number.isFinite(value));
+  if (valid.length === 0) return null;
+  return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+}
+
+function withSevenDayRollingAverage(rows: PerformanceDataRow[]): PerformanceDataRow[] {
+  const byPrimal = new Map<PerformancePrimal, PerformanceDataRow[]>();
+
+  for (const row of rows) {
+    const primalRows = byPrimal.get(row.primal) ?? [];
+    primalRows.push(row);
+    byPrimal.set(row.primal, primalRows);
+  }
+
+  const rollingById = new Map<string, number | null>();
+  for (const primalRows of byPrimal.values()) {
+    const sorted = [...primalRows].sort((a, b) => a.date.localeCompare(b.date));
+    for (const row of sorted) {
+      const rowTime = new Date(`${row.date}T00:00:00Z`).getTime();
+      const windowStart = rowTime - 6 * DAY_MS;
+      const windowValues = sorted
+        .filter((candidate) => {
+          const candidateTime = new Date(`${candidate.date}T00:00:00Z`).getTime();
+          return candidateTime >= windowStart && candidateTime <= rowTime;
+        })
+        .map((candidate) => candidate.delta);
+      rollingById.set(row.id, average(windowValues));
+    }
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    seven_day_avg_delta: rollingById.get(row.id) ?? null,
+  }));
+}
+
+export async function getPerformanceData(): Promise<PerformanceDataRow[]> {
+  const supabase = createServerClient();
+  const since = dateDaysAgo(30);
+
+  const [internalResult, cutoutResult] = await Promise.all([
+    supabase
+      .from('internal_prices')
+      .select('*')
+      .gte('date', since)
+      .order('date', { ascending: false })
+      .order('primal', { ascending: true }),
+    supabase
+      .from('cutout_daily')
+      .select('*')
+      .gte('date', since)
+      .order('date', { ascending: false }),
+  ]);
+
+  if (internalResult.error || cutoutResult.error) return [];
+
+  const cutoutByDate = new Map<string, CutoutDailyRow>();
+  for (const cutout of (cutoutResult.data ?? []) as CutoutDailyRow[]) {
+    cutoutByDate.set(cutout.date, cutout);
+  }
+
+  const joined: PerformanceDataRow[] = [];
+  for (const row of (internalResult.data ?? []) as InternalPriceRow[]) {
+    const cutout = cutoutByDate.get(row.date);
+    if (!cutout) continue;
+
+    const internalPrice = asFiniteNumber(row.price_cwt);
+    const cutoutValue = getCutoutPrimalValue(cutout, row.primal);
+    if (internalPrice == null || cutoutValue == null) continue;
+
+    joined.push({
+      ...row,
+      price_cwt: internalPrice,
+      cutout_value: cutoutValue,
+      delta: internalPrice - cutoutValue,
+      seven_day_avg_delta: null,
+    });
+  }
+
+  return withSevenDayRollingAverage(joined).sort((a, b) => {
+    const dateSort = b.date.localeCompare(a.date);
+    if (dateSort !== 0) return dateSort;
+    return a.primal.localeCompare(b.primal);
+  });
+}
+
+export async function getPerformanceSummary(
+  rows?: PerformanceDataRow[]
+): Promise<PerformanceSummary> {
+  const performanceRows = rows ?? await getPerformanceData();
+  if (performanceRows.length === 0) {
+    return {
+      today_avg_delta: null,
+      seven_day_avg_delta: null,
+      thirty_day_avg_delta: null,
+      today_date: null,
+    };
+  }
+
+  const latestDate = performanceRows.reduce(
+    (latest, row) => (row.date > latest ? row.date : latest),
+    performanceRows[0].date
+  );
+  const latestTime = new Date(`${latestDate}T00:00:00Z`).getTime();
+  const sevenDayStart = latestTime - 6 * DAY_MS;
+
+  return {
+    today_avg_delta: average(
+      performanceRows.filter((row) => row.date === latestDate).map((row) => row.delta)
+    ),
+    seven_day_avg_delta: average(
+      performanceRows
+        .filter((row) => {
+          const rowTime = new Date(`${row.date}T00:00:00Z`).getTime();
+          return rowTime >= sevenDayStart && rowTime <= latestTime;
+        })
+        .map((row) => row.delta)
+    ),
+    thirty_day_avg_delta: average(performanceRows.map((row) => row.delta)),
+    today_date: latestDate,
+  };
 }
 
 // Single-shot aggregator used by the dashboard Server Component and the

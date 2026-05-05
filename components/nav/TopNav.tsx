@@ -68,6 +68,14 @@ export function TopNav({ health = [], connection = 'connected' }: TopNavProps) {
           >
             Trade Sheet
           </Link>
+          <Link
+            href="/performance"
+            className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+              pathname === '/performance' ? 'bg-card text-text' : 'text-text-muted hover:text-text'
+            }`}
+          >
+            Performance
+          </Link>
         </div>
       </div>
 
