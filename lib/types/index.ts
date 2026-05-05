@@ -196,6 +196,45 @@ export interface SubprimalPriceRow {
   created_at: string;
 }
 
+export const PERFORMANCE_PRIMALS = [
+  'chuck',
+  'rib',
+  'loin',
+  'round',
+  'brisket',
+  'short_plate',
+  'flank',
+] as const;
+
+export type PerformancePrimal = (typeof PERFORMANCE_PRIMALS)[number];
+export type InternalPriceGrade = 'Choice' | 'Select' | 'Prime';
+export type InternalPriceChannel = 'fresh' | 'frozen';
+
+export interface InternalPriceRow {
+  id: string;
+  date: string;
+  primal: PerformancePrimal;
+  brand: string;
+  grade: InternalPriceGrade;
+  channel: InternalPriceChannel;
+  price_cwt: number;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface PerformanceDataRow extends InternalPriceRow {
+  cutout_value: number;
+  delta: number;
+  seven_day_avg_delta: number | null;
+}
+
+export interface PerformanceSummary {
+  today_avg_delta: number | null;
+  seven_day_avg_delta: number | null;
+  thirty_day_avg_delta: number | null;
+  today_date: string | null;
+}
+
 // Everything the dashboard Server Component fetches in one shot.
 export interface DashboardSnapshot {
   cutout: {
