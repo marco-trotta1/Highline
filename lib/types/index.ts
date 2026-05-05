@@ -108,6 +108,21 @@ export interface NegotiatedSalesRow extends NegotiatedSalesRecord {
   created_at: string;
 }
 
+export type NegotiatedSessionRow = Pick<
+  NegotiatedSalesRecord,
+  'session' | 'low' | 'high' | 'weighted_avg' | 'volume_loads' | 'session_quality'
+>;
+
+export type NegotiatedSessionPair = {
+  AM: NegotiatedSessionRow | null;
+  PM: NegotiatedSessionRow | null;
+};
+
+export type NegotiatedSessionHistoryRow = Pick<
+  NegotiatedSalesRecord,
+  'date' | 'session' | 'weighted_avg' | 'volume_loads'
+>;
+
 export interface SlaughterWeeklyRow extends SlaughterRecord {
   id: string;
   created_at: string;
@@ -268,6 +283,9 @@ export interface DashboardSnapshot {
   };
   negotiated: {
     today: NegotiatedSalesRow[];
+    sessions: NegotiatedSessionPair;
+    sessionHistory: NegotiatedSessionHistoryRow[];
+    lastUpdated: string | null;
   };
   futures: {
     latest: FuturesSnapshotRow | null;
