@@ -43,6 +43,7 @@ function makeQueryChain(singleData: unknown, listData?: unknown[]) {
   chain.order = vi.fn().mockReturnValue(chain);
   chain.limit = vi.fn().mockReturnValue(chain);
   chain.eq = vi.fn().mockReturnValue(chain);
+  chain.in = vi.fn().mockReturnValue(chain);
   chain.lt = vi.fn().mockReturnValue(chain);
   chain.gte = vi.fn().mockResolvedValue({ data: listData ?? [singleData], error: null });
   chain.single = vi.fn().mockResolvedValue({ data: singleData, error: null });

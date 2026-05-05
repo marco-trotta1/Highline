@@ -10,6 +10,7 @@ import type {
 import { TopNav } from '@/components/nav/TopNav';
 import { CutoutCard } from '@/components/cards/CutoutCard';
 import { NegotiatedCard } from '@/components/cards/NegotiatedCard';
+import { NegotiatedSessionsCard } from '@/components/cards/NegotiatedSessionsCard';
 import { FuturesCard } from '@/components/cards/FuturesCard';
 import { SlaughterCard } from '@/components/cards/SlaughterCard';
 import { ColdStorageCard } from '@/components/cards/ColdStorageCard';
@@ -186,7 +187,10 @@ export function Dashboard({ initialData }: DashboardProps) {
           const next = row as NegotiatedSalesRow;
           setSnapshot((prev) => {
             const without = prev.negotiated.today.filter((r) => r.id !== next.id);
-            return { ...prev, negotiated: { today: [...without, next] } };
+            return {
+              ...prev,
+              negotiated: { ...prev.negotiated, today: [...without, next] },
+            };
           });
           triggerFlash('negotiated');
         } else if (table === 'futures_snapshots') {
@@ -276,12 +280,6 @@ export function Dashboard({ initialData }: DashboardProps) {
             data-flash={flash.negotiated ? 'true' : undefined}
             className="lg:col-span-4"
           />
-          <FuturesCard
-            latest={snapshot.futures.latest}
-            health={healthBySource.futures_snapshots}
-            data-flash={flash.futures ? 'true' : undefined}
-            className="lg:col-span-4"
-          />
           <DirectionalIndicatorCard
             signal={snapshot.market.direction}
             signalSnapshot={snapshot.market.latestSignalSnapshot}
@@ -291,6 +289,19 @@ export function Dashboard({ initialData }: DashboardProps) {
             context={snapshot.market.calculator}
             signal={snapshot.market.direction}
             className="lg:col-span-6"
+          />
+          <NegotiatedSessionsCard
+            sessions={snapshot.negotiated.sessions}
+            history={snapshot.negotiated.sessionHistory}
+            lastUpdated={snapshot.negotiated.lastUpdated}
+            data-flash={flash.negotiated ? 'true' : undefined}
+            className="lg:col-span-12"
+          />
+          <FuturesCard
+            latest={snapshot.futures.latest}
+            health={healthBySource.futures_snapshots}
+            data-flash={flash.futures ? 'true' : undefined}
+            className="lg:col-span-12"
           />
 
           <SlaughterCard

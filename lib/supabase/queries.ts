@@ -2,7 +2,11 @@ import { createServerClient } from './client';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   CutoutDailyRow,
+  IngestionLogEntry,
   NegotiatedSalesRow,
+  NegotiatedSessionHistoryRow,
+  NegotiatedSessionPair,
+  NegotiatedSessionRow,
   SlaughterWeeklyRow,
   ColdStorageMonthlyRow,
   FuturesSnapshotRow,
@@ -27,6 +31,39 @@ import {
   evaluateFuturesHealth,
   getLastUpdated,
 } from './health';
+
+const CENTRAL_TIME_ZONE = 'America/Chicago';
+const NEGOTIATED_INGESTION_SOURCES = ['negotiated', 'usda_negotiated'];
+
+function formatDateInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+  return `${year}-${month}-${day}`;
+}
+
+function centralDateDaysAgo(days: number): string {
+  const wholeDays = Math.max(0, Math.floor(days));
+  return formatDateInTimeZone(
+    new Date(Date.now() - wholeDays * 24 * 60 * 60 * 1000),
+    CENTRAL_TIME_ZONE
+  );
+}
+
+function normalizeNegotiatedSessions(
+  rows: NegotiatedSessionRow[]
+): NegotiatedSessionPair {
+  return {
+    AM: rows.find((row) => row.session === 'AM') ?? null,
+    PM: rows.find((row) => row.session === 'PM') ?? null,
+  };
+}
 
 export async function getLatestCutout(): Promise<CutoutDailyRow | null> {
   const supabase = createServerClient();
@@ -64,6 +101,18 @@ export async function getTodayNegotiated(): Promise<NegotiatedSalesRow[]> {
   return (data ?? []) as NegotiatedSalesRow[];
 }
 
+export async function getTodayNegotiatedSessions(): Promise<NegotiatedSessionPair> {
+  const supabase = createServerClient();
+  const today = formatDateInTimeZone(new Date(), CENTRAL_TIME_ZONE);
+  const { data, error } = await supabase
+    .from('negotiated_sales')
+    .select('session,low,high,weighted_avg,volume_loads,session_quality')
+    .eq('date', today)
+    .order('session', { ascending: true });
+  if (error) return { AM: null, PM: null };
+  return normalizeNegotiatedSessions((data ?? []) as NegotiatedSessionRow[]);
+}
+
 export async function getNegotiatedHistory(days: number): Promise<NegotiatedSalesRow[]> {
   const supabase = createServerClient();
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -74,6 +123,35 @@ export async function getNegotiatedHistory(days: number): Promise<NegotiatedSale
     .gte('date', since);
   if (error) return [];
   return (data ?? []) as NegotiatedSalesRow[];
+}
+
+export async function getNegotiatedSessionHistory(
+  days: number = 7
+): Promise<NegotiatedSessionHistoryRow[]> {
+  const supabase = createServerClient();
+  const since = centralDateDaysAgo(days);
+  const { data, error } = await supabase
+    .from('negotiated_sales')
+    .select('date,session,weighted_avg,volume_loads')
+    .order('date', { ascending: false })
+    .order('session', { ascending: true })
+    .gte('date', since);
+  if (error) return [];
+  return (data ?? []) as NegotiatedSessionHistoryRow[];
+}
+
+export async function getLatestNegotiatedIngestionTimestamp(): Promise<string | null> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from('ingestion_log')
+    .select('timestamp')
+    .in('source', NEGOTIATED_INGESTION_SOURCES)
+    .eq('status', 'success')
+    .order('timestamp', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  return ((data ?? null) as Pick<IngestionLogEntry, 'timestamp'> | null)?.timestamp ?? null;
 }
 
 export async function getLatestSlaughter(): Promise<SlaughterWeeklyRow | null> {
@@ -390,6 +468,9 @@ export async function getSnapshot(): Promise<DashboardSnapshot> {
   const [
     cutoutLatest,
     negotiatedToday,
+    negotiatedSessions,
+    negotiatedSessionHistory,
+    negotiatedLastUpdated,
     futuresLatest,
     slaughterLatest,
     slaughterHistory,
@@ -400,6 +481,9 @@ export async function getSnapshot(): Promise<DashboardSnapshot> {
   ] = await Promise.all([
     getLatestCutout(),
     getTodayNegotiated(),
+    getTodayNegotiatedSessions(),
+    getNegotiatedSessionHistory(7),
+    getLatestNegotiatedIngestionTimestamp(),
     getLatestFutures(),
     getLatestSlaughter(),
     getSlaughterHistory(4),
@@ -447,7 +531,12 @@ export async function getSnapshot(): Promise<DashboardSnapshot> {
 
   return {
     cutout: { latest: cutoutLatest, yesterday: cutoutPrev },
-    negotiated: { today: negotiatedToday },
+    negotiated: {
+      today: negotiatedToday,
+      sessions: negotiatedSessions,
+      sessionHistory: negotiatedSessionHistory,
+      lastUpdated: negotiatedLastUpdated,
+    },
     futures: { latest: futuresLatest },
     slaughter: { latest: slaughterLatest, fourWeekAvgHeiferPct },
     coldStorage: { latest: coldStorageLatest, history: coldStorageHistory },
