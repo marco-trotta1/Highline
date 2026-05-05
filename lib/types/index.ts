@@ -152,6 +152,31 @@ export interface MarketDirectionSignal {
   drivers: MarketDriverSignal[];
 }
 
+export type SignalSnapshotDirection = 'Bullish' | 'Neutral' | 'Bearish';
+
+export interface SignalSnapshotRow {
+  id: string;
+  timestamp: string;
+  direction: SignalSnapshotDirection;
+  confidence: number;
+  futures_price: number | null;
+  futures_change_pct: number | null;
+  futures_weight: number;
+  futures_signal: number | null;
+  negotiated_weighted_avg: number | null;
+  negotiated_volume_loads: number | null;
+  negotiated_session_quality: 'active' | 'thin' | null;
+  negotiated_weight: number;
+  negotiated_signal: number | null;
+  cold_storage_vs_5yr_avg_pct: number | null;
+  cold_storage_weight: number;
+  cold_storage_signal: number | null;
+  composite_score: number | null;
+  notes: string | null;
+}
+
+export type SignalSnapshotInsert = Omit<SignalSnapshotRow, 'id' | 'timestamp'>;
+
 export interface BidRangeCalculatorContext {
   benchmark_price: number | null;
   negotiated_anchor: number | null;
@@ -258,6 +283,7 @@ export interface DashboardSnapshot {
   market: {
     direction: MarketDirectionSignal | null;
     calculator: BidRangeCalculatorContext;
+    latestSignalSnapshot: SignalSnapshotRow | null;
   };
   health: DataHealthStatus[];
   fetchedAt: string;

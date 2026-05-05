@@ -13,8 +13,11 @@ import type {
   PerformanceDataRow,
   PerformancePrimal,
   PerformanceSummary,
+  SignalSnapshotInsert,
+  SignalSnapshotRow,
 } from '../types';
 import {
+  buildSignalSnapshotInsert,
   buildBidRangeCalculatorContext,
   buildMarketDirectionSignal,
 } from '../market';
@@ -108,6 +111,42 @@ export async function getLatestFutures(): Promise<FuturesSnapshotRow | null> {
     .single();
   if (error) return null;
   return data as FuturesSnapshotRow;
+}
+
+export async function getLatestSignalSnapshot(): Promise<SignalSnapshotRow | null> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from('signal_snapshots')
+    .select('*')
+    .order('timestamp', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  return (data ?? null) as SignalSnapshotRow | null;
+}
+
+async function insertSignalSnapshot(
+  snapshot: SignalSnapshotInsert
+): Promise<SignalSnapshotRow | null> {
+  try {
+    const { createServiceRoleClient } = await import('./service');
+    const supabase = createServiceRoleClient();
+    const { data, error } = await supabase
+      .from('signal_snapshots')
+      .insert(snapshot)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('signal_snapshots insert failed', error);
+      return null;
+    }
+
+    return data as SignalSnapshotRow;
+  } catch (error) {
+    console.error('signal_snapshots insert failed', error);
+    return null;
+  }
 }
 
 export async function getYesterdayCutout(referenceDate?: string): Promise<CutoutDailyRow | null> {
@@ -389,6 +428,17 @@ export async function getSnapshot(): Promise<DashboardSnapshot> {
     negotiatedRows: negotiatedHistory,
     coldStorage: coldStorageLatest,
   });
+  const signalSnapshotInsert = buildSignalSnapshotInsert({
+    futures: futuresLatest,
+    negotiatedRows: negotiatedHistory,
+    coldStorage: coldStorageLatest,
+    marketSignal: marketDirection,
+  });
+  const insertedSignalSnapshot = signalSnapshotInsert
+    ? await insertSignalSnapshot(signalSnapshotInsert)
+    : null;
+  const latestSignalSnapshot =
+    insertedSignalSnapshot ?? (await getLatestSignalSnapshot());
   const calculatorContext = buildBidRangeCalculatorContext({
     negotiatedRows: negotiatedHistory,
     cutoutChoice: cutoutLatest?.choice_total ?? null,
@@ -401,7 +451,11 @@ export async function getSnapshot(): Promise<DashboardSnapshot> {
     futures: { latest: futuresLatest },
     slaughter: { latest: slaughterLatest, fourWeekAvgHeiferPct },
     coldStorage: { latest: coldStorageLatest, history: coldStorageHistory },
-    market: { direction: marketDirection, calculator: calculatorContext },
+    market: {
+      direction: marketDirection,
+      calculator: calculatorContext,
+      latestSignalSnapshot,
+    },
     health,
     fetchedAt: new Date().toISOString(),
   };
