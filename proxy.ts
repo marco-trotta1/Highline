@@ -12,13 +12,6 @@ function unauthorized(): Response {
   });
 }
 
-function authNotConfigured(): Response {
-  return new Response('Highline access gate is not configured', {
-    status: 503,
-    headers: { 'Cache-Control': 'no-store' },
-  });
-}
-
 function parseBasicAuth(header: string | null): { user: string; password: string } | null {
   if (!header?.startsWith('Basic ')) return null;
 
@@ -38,10 +31,9 @@ function parseBasicAuth(header: string | null): { user: string; password: string
 function hasAccess(request: NextRequest): boolean {
   const expectedUser = process.env.HIGHLINE_ACCESS_USER;
   const expectedPassword = process.env.HIGHLINE_ACCESS_PASSWORD;
-  const isDeployment = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
 
   if (!expectedUser || !expectedPassword) {
-    return !isDeployment;
+    return true;
   }
 
   const credentials = parseBasicAuth(request.headers.get('authorization'));
@@ -52,14 +44,6 @@ function hasAccess(request: NextRequest): boolean {
 }
 
 export function proxy(request: NextRequest) {
-  const expectedUser = process.env.HIGHLINE_ACCESS_USER;
-  const expectedPassword = process.env.HIGHLINE_ACCESS_PASSWORD;
-  const isDeployment = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
-
-  if ((!expectedUser || !expectedPassword) && isDeployment) {
-    return authNotConfigured();
-  }
-
   if (!hasAccess(request)) {
     return unauthorized();
   }

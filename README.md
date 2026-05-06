@@ -15,8 +15,8 @@ Beef pricing intelligence platform for AB Foods / Agri Beef. Ingests USDA AMS re
 npm install
 cp .env.local.example .env.local
 # Fill in: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-#          SUPABASE_SERVICE_ROLE_KEY, HIGHLINE_ACCESS_USER,
-#          HIGHLINE_ACCESS_PASSWORD, FIRECRAWL_API_KEY
+#          SUPABASE_SERVICE_ROLE_KEY, FIRECRAWL_API_KEY
+# Optional: HIGHLINE_ACCESS_USER, HIGHLINE_ACCESS_PASSWORD
 ```
 
 ## Development
@@ -45,12 +45,12 @@ Set these environment variables in Vercel before sharing the deployment:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `HIGHLINE_ACCESS_USER`
-- `HIGHLINE_ACCESS_PASSWORD`
 
-`HIGHLINE_ACCESS_PASSWORD` should be a long random value and shared out-of-band.
-Production deployments fail closed with `503` if either access-gate variable is
-missing. Do not upload `.env.local` or any file containing real keys.
+The deployment access gate is optional. Leave `HIGHLINE_ACCESS_USER` and
+`HIGHLINE_ACCESS_PASSWORD` unset to show the Vercel deployment without a
+password. If both are set later, Basic Auth turns on automatically; use a long
+random password and share it out-of-band. Do not upload `.env.local` or any file
+containing real keys.
 
 Apply Supabase migrations before sending the deployment URL. The latest migration
 removes direct anon reads from `ingestion_log`; the dashboard reads freshness
