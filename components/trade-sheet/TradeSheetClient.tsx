@@ -132,6 +132,7 @@ type Props = {
 
 export function TradeSheetClient({ rows, latestDate, isStale }: Props) {
   const [grade, setGrade] = useState<Grade>('Choice');
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const sessions = new Set(rows.map((r) => r.session));
   const hasBothSessions = sessions.has('AM') && sessions.has('PM');
@@ -155,12 +156,40 @@ export function TradeSheetClient({ rows, latestDate, isStale }: Props) {
   const colCount = hasBothSessions ? 6 : 5;
   const allGroups: Array<Primal | null> = [...PRIMAL_ORDER, null];
 
+  function handleDownloadPdf() {
+    setIsGeneratingPdf(true);
+    window.open('/api/trade-sheet/pdf', '_blank');
+    window.setTimeout(() => setIsGeneratingPdf(false), 1500);
+  }
+
   return (
     <div className="space-y-4">
       {/* Page header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-text">Trade Sheet</h1>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={isGeneratingPdf}
+            className="inline-flex items-center gap-1.5 rounded-md bg-[#1a1a2e] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#16213e] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              fill="none"
+              className="h-3.5 w-3.5"
+            >
+              <path
+                d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 15.5h12"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            {isGeneratingPdf ? 'Generating...' : 'Download PDF'}
+          </button>
           {singleSession && (
             <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[11px] font-medium text-text-muted">
               {singleSession}
