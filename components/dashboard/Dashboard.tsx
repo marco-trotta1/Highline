@@ -18,7 +18,6 @@ import { DataHealthPanel } from '@/components/cards/DataHealthPanel';
 import { DirectionalIndicatorCard } from '@/components/cards/DirectionalIndicatorCard';
 import { BidRangeCalculatorCard } from '@/components/cards/BidRangeCalculatorCard';
 import { subscribeToSnapshot } from '@/lib/supabase/realtime';
-import { createBrowserClient } from '@/lib/supabase/client';
 
 type DashboardProps = {
   initialData: DashboardSnapshot;
@@ -136,19 +135,13 @@ export function Dashboard({ initialData }: DashboardProps) {
 
   useEffect(() => {
     let cancelled = false;
-    const supabase = createBrowserClient();
-    const aliases = Object.values(FRESHNESS_SOURCE_ALIASES).flat();
 
     const loadFreshness = async () => {
-      const { data, error } = await supabase
-        .from('ingestion_log')
-        .select('source,timestamp,status')
-        .in('source', aliases)
-        .order('timestamp', { ascending: false })
-        .limit(100);
-
-      if (cancelled || error) return;
-      const warning = buildFreshnessWarning((data ?? []) as IngestionLogRow[]);
+      const res = await fetch('/api/ingestion-health', { cache: 'no-store' });
+      if (cancelled || !res.ok) return;
+      const rows = (await res.json()) as IngestionLogRow[];
+      if (cancelled) return;
+      const warning = buildFreshnessWarning(rows);
       if (!warning) localStorage.removeItem(FRESHNESS_DISMISS_KEY);
       setDismissedFreshnessSignature(localStorage.getItem(FRESHNESS_DISMISS_KEY));
       setFreshnessWarning(warning);

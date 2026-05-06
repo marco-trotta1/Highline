@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../lib/supabase/client', () => ({
   createServerClient: vi.fn(),
@@ -7,12 +7,6 @@ vi.mock('../../lib/supabase/client', () => ({
 import { createServerClient } from '../../lib/supabase/client';
 import {
   getLatestCutout,
-  getCutoutHistory,
-  getTodayNegotiated,
-  getNegotiatedHistory,
-  getLatestSlaughter,
-  getLatestColdStorage,
-  getLatestFutures,
   getYesterdayCutout,
   getSnapshot,
   getDataHealth,
