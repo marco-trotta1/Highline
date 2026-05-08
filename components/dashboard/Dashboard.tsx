@@ -217,12 +217,14 @@ export function Dashboard({ initialData }: DashboardProps) {
   const [freshnessWarning, setFreshnessWarning] = useState<FreshnessWarning | null>(null);
   const [dismissedFreshnessSignature, setDismissedFreshnessSignature] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [dataHealthFocusKey, setDataHealthFocusKey] = useState(0);
   const [flash, setFlash] = useState<Record<FlashKey, boolean>>({
     cutout: false,
     negotiated: false,
     futures: false,
   });
 
+  const dataHealthRef = useRef<HTMLDivElement | null>(null);
   const flashTimers = useRef<Record<FlashKey, ReturnType<typeof setTimeout> | null>>({
     cutout: null,
     negotiated: null,
@@ -239,6 +241,11 @@ export function Dashboard({ initialData }: DashboardProps) {
     flashTimers.current[key] = setTimeout(() => {
       setFlash((prev) => ({ ...prev, [key]: false }));
     }, 1500);
+  };
+
+  const focusDataHealth = () => {
+    setDetailsOpen(true);
+    setDataHealthFocusKey((key) => key + 1);
   };
 
   const refreshSnapshot = useEffectEvent(async () => {
@@ -345,6 +352,14 @@ export function Dashboard({ initialData }: DashboardProps) {
     };
   }, []);
 
+  useEffect(() => {
+    if (dataHealthFocusKey === 0) return;
+    const timer = setTimeout(() => {
+      dataHealthRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [dataHealthFocusKey]);
+
   const kpis = useMemo(() => {
     const latest = snapshot.cutout.latest;
     const yesterday = snapshot.cutout.yesterday;
@@ -411,7 +426,11 @@ export function Dashboard({ initialData }: DashboardProps) {
 
   return (
     <>
-      <TopNav health={snapshot.health} connection={connection} />
+      <TopNav
+        health={snapshot.health}
+        connection={connection}
+        onHealthClick={focusDataHealth}
+      />
       <main className="mx-auto w-full max-w-7xl px-4 pb-[env(safe-area-inset-bottom)] pt-6 sm:px-6 lg:px-8">
         <div className="space-y-6">
           <header className="space-y-4">
@@ -569,8 +588,11 @@ export function Dashboard({ initialData }: DashboardProps) {
                     health={healthBySource.cold_storage_monthly}
                     className="lg:col-span-6"
                   />
-                  <div className="lg:col-span-12">
-                    <DataHealthPanel health={snapshot.health} />
+                  <div ref={dataHealthRef} className="scroll-mt-20 lg:col-span-12">
+                    <DataHealthPanel
+                      health={snapshot.health}
+                      focusKey={dataHealthFocusKey > 0 ? dataHealthFocusKey : undefined}
+                    />
                   </div>
                 </div>
               </div>

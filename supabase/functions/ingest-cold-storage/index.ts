@@ -30,10 +30,8 @@ const MONTHS: Record<string, number> = {
 function buildNassUrl(apiKey: string): string {
   const params = new URLSearchParams({
     key: apiKey,
-    commodity_desc: 'BEEF',
-    statisticcat_desc: 'STOCKS',
-    unit_desc: 'MIL LB',
-    freq_desc: 'MONTHLY',
+    short_desc: 'BEEF, COLD STORAGE, FROZEN - STOCKS, MEASURED IN LB',
+    agg_level_desc: 'NATIONAL',
     format: 'JSON',
   });
   return `${NASS_ENDPOINT}?${params.toString()}`;
@@ -107,10 +105,11 @@ serve(async (_req: Request) => {
     const latest = latestColdStorageRow(rows);
     if (!latest) throw new Error('NASS API returned no monthly beef cold storage rows');
 
-    const total_beef_million_lbs = parseNumber(latest.row?.Value);
-    if (total_beef_million_lbs === null) {
+    const totalBeefLbs = parseNumber(latest.row?.Value);
+    if (totalBeefLbs === null) {
       throw new Error(`Could not parse cold storage Value from latest row: ${latest.row?.Value}`);
     }
+    const total_beef_million_lbs = totalBeefLbs / 1_000_000;
 
     const row = {
       month: latest.month,
