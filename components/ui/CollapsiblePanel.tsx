@@ -6,6 +6,7 @@ type CollapsiblePanelProps = {
   title: string;
   subtitle?: string;
   defaultOpen?: boolean;
+  id?: string;
   children: ReactNode;
 };
 
@@ -13,11 +14,13 @@ export function CollapsiblePanel({
   title,
   subtitle,
   defaultOpen = false,
+  id,
   children,
 }: CollapsiblePanelProps) {
   const [open, setOpen] = useState(defaultOpen);
+
   return (
-    <section className="rounded-lg border border-border bg-card">
+    <section id={id} className="rounded-lg border border-border bg-card">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

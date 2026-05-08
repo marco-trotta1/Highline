@@ -12,6 +12,7 @@ type OverallStatus = 'fresh' | 'stale' | 'no_data' | 'error';
 type TopNavProps = {
   health?: DataHealthStatus[];
   connection?: ConnectionStatus;
+  onHealthClick?: () => void;
 };
 
 function overallHealth(health: DataHealthStatus[]): OverallStatus {
@@ -23,16 +24,23 @@ function overallHealth(health: DataHealthStatus[]): OverallStatus {
 }
 
 function statusLabel(status: OverallStatus, health: DataHealthStatus[]): string {
+  const nonFreshCount = health.filter((h) => h.state !== 'fresh').length;
   if (status === 'fresh') return 'All data fresh';
-  if (status === 'stale') return `${health.filter((h) => h.state === 'stale').length} source(s) stale`;
-  if (status === 'no_data') return `${health.filter((h) => h.state === 'no_data').length} source(s) awaiting first load`;
-  return 'Data errors';
+  return `${nonFreshCount} ${nonFreshCount === 1 ? 'source' : 'sources'} need attention`;
 }
 
-export function TopNav({ health = [], connection = 'connected' }: TopNavProps) {
+export function TopNav({
+  health = [],
+  connection = 'connected',
+  onHealthClick,
+}: TopNavProps) {
   const pathname = usePathname();
   const status = overallHealth(health);
   const label = statusLabel(status, health);
+  const hasHealthIssues = health.some((h) => h.state !== 'fresh');
+  const healthClass = hasHealthIssues
+    ? 'border-warn/30 bg-warn/10 text-warn hover:border-warn/50'
+    : 'border-transparent text-text-muted';
 
   return (
     <nav className="sticky top-0 z-50 flex h-14 items-center justify-between gap-4 border-b border-border bg-bg/90 px-4 backdrop-blur-sm sm:px-6">
@@ -91,12 +99,17 @@ export function TopNav({ health = [], connection = 'connected' }: TopNavProps) {
         ) : null}
 
         {health.length > 0 && (
-          <div className="flex items-center gap-2" title={label} aria-label={label}>
+          <button
+            type="button"
+            onClick={hasHealthIssues ? onHealthClick : undefined}
+            disabled={!hasHealthIssues || !onHealthClick}
+            className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-default ${healthClass}`}
+            title={label}
+            aria-label={label}
+          >
             <StatusDot status={status} pulse={status === 'fresh'} size="md" />
-            <span className="hidden text-xs text-text-muted sm:inline">
-              {label}
-            </span>
-          </div>
+            <span className="hidden sm:inline">{label}</span>
+          </button>
         )}
 
         <div
