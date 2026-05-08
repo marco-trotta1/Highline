@@ -3,6 +3,7 @@ import type { DataHealthStatus, FuturesSnapshotRow } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Delta } from '@/components/ui/Delta';
 import { formatCurrency, formatContractName } from '@/lib/format';
+import { formatDataHealthDetail } from './dataHealthText';
 
 type FuturesCardProps = HTMLAttributes<HTMLElement> & {
   latest: FuturesSnapshotRow | null;
@@ -10,6 +11,8 @@ type FuturesCardProps = HTMLAttributes<HTMLElement> & {
 };
 
 export function FuturesCard({ latest, health, ...rest }: FuturesCardProps) {
+  const healthDetail = health ? formatDataHealthDetail(health) : null;
+
   return (
     <Card title="Live Cattle Futures" description="Where traders expect cattle prices to land — your forward directional signal." {...rest}>
       {latest ? (
@@ -32,8 +35,8 @@ export function FuturesCard({ latest, health, ...rest }: FuturesCardProps) {
           <p className="mt-4 text-[10px] text-text-muted">
             Source: agribeef.com/market-quotes
           </p>
-          {health?.state === 'stale' && health.stale_reason ? (
-            <p className="mt-2 text-[10px] text-warn">{health.stale_reason}</p>
+          {health?.state === 'stale' && healthDetail ? (
+            <p className="mt-2 text-[10px] text-warn">{healthDetail}</p>
           ) : null}
         </>
       ) : (

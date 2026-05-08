@@ -26,6 +26,7 @@ import {
   buildMarketDirectionSignal,
 } from '../market';
 import {
+  type HealthProbe,
   STALE_MS,
   checkStale,
   evaluateFuturesHealth,
@@ -34,6 +35,12 @@ import {
 
 const CENTRAL_TIME_ZONE = 'America/Chicago';
 const NEGOTIATED_INGESTION_SOURCES = ['negotiated', 'usda_negotiated'];
+
+async function createIngestionLogClient(): Promise<SupabaseClient> {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return createServerClient();
+  const { createServiceRoleClient } = await import('./service');
+  return createServiceRoleClient();
+}
 
 function formatDateInTimeZone(date: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -91,11 +98,18 @@ export async function getCutoutHistory(days: number): Promise<CutoutDailyRow[]> 
 
 export async function getTodayNegotiated(): Promise<NegotiatedSalesRow[]> {
   const supabase = createServerClient();
-  const today = new Date().toISOString().split('T')[0];
+  const { data: latestDateRow, error: latestDateError } = await supabase
+    .from('negotiated_sales')
+    .select('date')
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (latestDateError || !latestDateRow) return [];
+
   const { data, error } = await supabase
     .from('negotiated_sales')
     .select('*')
-    .eq('date', today)
+    .eq('date', (latestDateRow as { date: string }).date)
     .order('session', { ascending: true });
   if (error) return [];
   return (data ?? []) as NegotiatedSalesRow[];
@@ -103,11 +117,18 @@ export async function getTodayNegotiated(): Promise<NegotiatedSalesRow[]> {
 
 export async function getTodayNegotiatedSessions(): Promise<NegotiatedSessionPair> {
   const supabase = createServerClient();
-  const today = formatDateInTimeZone(new Date(), CENTRAL_TIME_ZONE);
+  const { data: latestDateRow, error: latestDateError } = await supabase
+    .from('negotiated_sales')
+    .select('date')
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (latestDateError || !latestDateRow) return { AM: null, PM: null };
+
   const { data, error } = await supabase
     .from('negotiated_sales')
     .select('session,low,high,weighted_avg,volume_loads,session_quality')
-    .eq('date', today)
+    .eq('date', (latestDateRow as { date: string }).date)
     .order('session', { ascending: true });
   if (error) return { AM: null, PM: null };
   return normalizeNegotiatedSessions((data ?? []) as NegotiatedSessionRow[]);
@@ -141,7 +162,7 @@ export async function getNegotiatedSessionHistory(
 }
 
 export async function getLatestNegotiatedIngestionTimestamp(): Promise<string | null> {
-  const supabase = createServerClient();
+  const supabase = await createIngestionLogClient();
   const { data, error } = await supabase
     .from('ingestion_log')
     .select('timestamp')
@@ -152,6 +173,27 @@ export async function getLatestNegotiatedIngestionTimestamp(): Promise<string | 
     .maybeSingle();
   if (error) return null;
   return ((data ?? null) as Pick<IngestionLogEntry, 'timestamp'> | null)?.timestamp ?? null;
+}
+
+async function getLatestNegotiatedIngestionProbe(): Promise<HealthProbe> {
+  const supabase = await createIngestionLogClient();
+  const { data, error } = await supabase
+    .from('ingestion_log')
+    .select('timestamp')
+    .in('source', NEGOTIATED_INGESTION_SOURCES)
+    .eq('status', 'success')
+    .order('timestamp', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    return { lastUpdated: null, errorMessage: error.message };
+  }
+
+  return {
+    lastUpdated: ((data ?? null) as Pick<IngestionLogEntry, 'timestamp'> | null)?.timestamp ?? null,
+    errorMessage: null,
+  };
 }
 
 export async function getLatestSlaughter(): Promise<SlaughterWeeklyRow | null> {
@@ -270,7 +312,7 @@ export async function getDataHealth(): Promise<DataHealthStatus[]> {
 
   const [cutoutUpdated, negUpdated, slaughterUpdated, coldUpdated, futuresUpdated] = await Promise.all([
     getLastUpdated(supabase, 'cutout_daily', 'created_at'),
-    getLastUpdated(supabase, 'negotiated_sales', 'created_at'),
+    getLatestNegotiatedIngestionProbe(),
     getLastUpdated(supabase, 'slaughter_weekly', 'created_at'),
     getLastUpdated(supabase, 'cold_storage_monthly', 'created_at'),
     getLastUpdated(supabase, 'futures_snapshots', 'timestamp'),

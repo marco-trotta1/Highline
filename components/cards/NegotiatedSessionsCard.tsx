@@ -113,14 +113,22 @@ export function NegotiatedSessionsCard({
     const supabase = createBrowserClient();
 
     const refresh = async () => {
-      const today = formatDateInTimeZone(new Date(), CENTRAL_TIME_ZONE);
       const since = centralDateDaysAgo(7);
+      const latestDateResult = await supabase
+        .from('negotiated_sales')
+        .select('date')
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const latestDate = ((latestDateResult.data ?? null) as { date: string } | null)?.date;
       const [sessionResult, historyResult, logResult] = await Promise.all([
-        supabase
-          .from('negotiated_sales')
-          .select(SESSION_SELECT)
-          .eq('date', today)
-          .order('session', { ascending: true }),
+        latestDate
+          ? supabase
+              .from('negotiated_sales')
+              .select(SESSION_SELECT)
+              .eq('date', latestDate)
+              .order('session', { ascending: true })
+          : Promise.resolve({ data: [], error: latestDateResult.error }),
         supabase
           .from('negotiated_sales')
           .select(HISTORY_SELECT)

@@ -3,6 +3,7 @@ import type { CutoutDailyRow, DataHealthStatus } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Delta } from '@/components/ui/Delta';
 import { formatCurrency, formatDateShort } from '@/lib/format';
+import { formatDataHealthDetail } from './dataHealthText';
 
 type CutoutCardProps = HTMLAttributes<HTMLElement> & {
   latest: CutoutDailyRow | null;
@@ -18,6 +19,7 @@ export function CutoutCard({
 }: CutoutCardProps) {
   const choiceDelta =
     latest && yesterday ? latest.choice_total - yesterday.choice_total : null;
+  const healthDetail = health ? formatDataHealthDetail(health) : null;
 
   return (
     <Card
@@ -51,8 +53,8 @@ export function CutoutCard({
           <p className="mt-4 text-[10px] text-text-muted">
             USDA Daily Boxed Beef Cutout
           </p>
-          {health?.state === 'stale' && health.stale_reason ? (
-            <p className="mt-2 text-[10px] text-warn">{health.stale_reason}</p>
+          {health?.state === 'stale' && healthDetail ? (
+            <p className="mt-2 text-[10px] text-warn">{healthDetail}</p>
           ) : null}
         </>
       ) : (

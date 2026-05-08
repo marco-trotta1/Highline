@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/Card';
 import { RangeBar } from '@/components/ui/RangeBar';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { formatCurrency, formatInt } from '@/lib/format';
+import { formatDataHealthDetail } from './dataHealthText';
 
 type NegotiatedCardProps = HTMLAttributes<HTMLElement> & {
   today: NegotiatedSalesRow[];
@@ -17,6 +18,7 @@ export function NegotiatedCard({
   health,
   ...rest
 }: NegotiatedCardProps) {
+  const healthDetail = health ? formatDataHealthDetail(health) : null;
   const sessions = [...today].sort((a, b) => {
     const rank = { AM: 0, PM: 1 } as const;
     return rank[a.session] - rank[b.session];
@@ -35,8 +37,8 @@ export function NegotiatedCard({
           {sessions.map((s) => (
             <SessionBlock key={s.id} row={s} cutout={cutout} />
           ))}
-          {health?.state === 'stale' && health.stale_reason ? (
-            <p className="text-[10px] text-warn">{health.stale_reason}</p>
+          {health?.state === 'stale' && healthDetail ? (
+            <p className="text-[10px] text-warn">{healthDetail}</p>
           ) : null}
         </div>
       )}

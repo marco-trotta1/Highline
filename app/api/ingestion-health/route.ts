@@ -11,6 +11,8 @@ const INGESTION_SOURCES = [
   'usda_negotiated',
   'slaughter',
   'usda_slaughter',
+  'cold_storage',
+  'usda_cold_storage',
   'futures',
   'usda_futures_agribeef',
 ] as const;

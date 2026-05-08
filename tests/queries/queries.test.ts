@@ -230,7 +230,7 @@ describe('getSnapshot', () => {
 describe('getDataHealth', () => {
   it('marks negotiated stale when last update > 4 hours ago', async () => {
     const staleTime = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
-    const chain = makeQueryChain({ created_at: staleTime });
+    const chain = makeQueryChain({ timestamp: staleTime });
     (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({
       from: vi.fn().mockReturnValue(chain),
     });
@@ -242,7 +242,7 @@ describe('getDataHealth', () => {
 
   it('marks negotiated fresh when last update < 4 hours ago', async () => {
     const freshTime = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-    const chain = makeQueryChain({ created_at: freshTime });
+    const chain = makeQueryChain({ timestamp: freshTime });
     (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({
       from: vi.fn().mockReturnValue(chain),
     });

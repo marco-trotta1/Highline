@@ -24,6 +24,7 @@ import {
   formatCurrency,
   formatDateTime,
   formatInt,
+  formatRelativeLong,
   formatSignedCurrency,
 } from '@/lib/format';
 import { subscribeToSnapshot } from '@/lib/supabase/realtime';
@@ -34,7 +35,7 @@ type DashboardProps = {
 
 type FlashKey = 'cutout' | 'negotiated' | 'futures';
 type ConnectionStatus = 'connected' | 'reconnecting';
-type FreshnessSource = 'cutout' | 'negotiated' | 'slaughter' | 'futures';
+type FreshnessSource = 'cutout' | 'negotiated' | 'slaughter' | 'cold_storage' | 'futures';
 type FreshnessSeverity = 'failed' | 'stale';
 type IngestionLogRow = {
   source: string;
@@ -43,22 +44,49 @@ type IngestionLogRow = {
 };
 type FreshnessWarning = {
   source: FreshnessSource;
-  hoursAgo: number | null;
+  lastSuccessAt: string | null;
   severity: FreshnessSeverity;
   signature: string;
 };
 
-const FRESHNESS_STALE_MS = 4 * 60 * 60 * 1000;
 const FRESHNESS_DISMISS_KEY = 'highline:freshness-warning-dismissed';
+const FRESHNESS_STALE_MS: Record<FreshnessSource, number> = {
+  cutout: 4 * 60 * 60 * 1000,
+  negotiated: 4 * 60 * 60 * 1000,
+  futures: 90 * 60 * 1000,
+  slaughter: 8 * 24 * 60 * 60 * 1000,
+  cold_storage: 35 * 24 * 60 * 60 * 1000,
+};
+const FRESHNESS_CADENCE: Record<FreshnessSource, string> = {
+  cutout: 'twice each business day',
+  negotiated: 'twice each business day',
+  futures: 'every 30 minutes while the market is open',
+  slaughter: 'weekly',
+  cold_storage: 'monthly',
+};
 const FRESHNESS_SOURCE_ALIASES: Record<FreshnessSource, string[]> = {
   cutout: ['cutout', 'usda_cutout'],
   negotiated: ['negotiated', 'usda_negotiated'],
   slaughter: ['slaughter', 'usda_slaughter'],
+  cold_storage: ['cold_storage', 'usda_cold_storage'],
   futures: ['futures', 'usda_futures_agribeef'],
 };
 
 function sourceLabel(source: FreshnessSource): string {
   return source.replace('_', ' ');
+}
+
+function freshnessWarningText(warning: FreshnessWarning): string {
+  const source = sourceLabel(warning.source);
+  const cadence = FRESHNESS_CADENCE[warning.source];
+  if (warning.severity === 'failed') {
+    return `${source} latest run failed. Last successful update: ${
+      warning.lastSuccessAt ? formatRelativeLong(warning.lastSuccessAt) : 'never'
+    }. Expected ${cadence}.`;
+  }
+  return `${source} last updated ${
+    warning.lastSuccessAt ? formatRelativeLong(warning.lastSuccessAt) : 'never'
+  }. Expected ${cadence}.`;
 }
 
 function buildFreshnessWarning(rows: IngestionLogRow[]): FreshnessWarning | null {
@@ -72,24 +100,22 @@ function buildFreshnessWarning(rows: IngestionLogRow[]): FreshnessWarning | null
     const latest = sourceRows[0];
     const latestSuccess = sourceRows.find((row) => row.status === 'success');
     const lastSuccessMs = latestSuccess ? new Date(latestSuccess.timestamp).getTime() : Number.NaN;
-    const hoursAgo = Number.isFinite(lastSuccessMs)
-      ? Math.max(0, Math.round((now - lastSuccessMs) / (60 * 60 * 1000)))
-      : null;
+    const thresholdMs = FRESHNESS_STALE_MS[source];
 
     if (latest?.status === 'failed') {
       warnings.push({
         source,
-        hoursAgo,
+        lastSuccessAt: latestSuccess?.timestamp ?? null,
         severity: 'failed',
         signature: `${source}:failed:${latest.timestamp}`,
       });
       continue;
     }
 
-    if (!latestSuccess || now - lastSuccessMs > FRESHNESS_STALE_MS) {
+    if (!latestSuccess || now - lastSuccessMs > thresholdMs) {
       warnings.push({
         source,
-        hoursAgo,
+        lastSuccessAt: latestSuccess?.timestamp ?? null,
         severity: 'stale',
         signature: `${source}:stale:${latestSuccess?.timestamp ?? 'none'}`,
       });
@@ -98,7 +124,9 @@ function buildFreshnessWarning(rows: IngestionLogRow[]): FreshnessWarning | null
 
   return warnings.sort((a, b) => {
     if (a.severity !== b.severity) return a.severity === 'failed' ? -1 : 1;
-    return (b.hoursAgo ?? Number.POSITIVE_INFINITY) - (a.hoursAgo ?? Number.POSITIVE_INFINITY);
+    const aMs = a.lastSuccessAt ? new Date(a.lastSuccessAt).getTime() : 0;
+    const bMs = b.lastSuccessAt ? new Date(b.lastSuccessAt).getTime() : 0;
+    return aMs - bMs;
   })[0] ?? null;
 }
 
@@ -217,12 +245,14 @@ export function Dashboard({ initialData }: DashboardProps) {
   const [freshnessWarning, setFreshnessWarning] = useState<FreshnessWarning | null>(null);
   const [dismissedFreshnessSignature, setDismissedFreshnessSignature] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [dataHealthFocusKey, setDataHealthFocusKey] = useState(0);
   const [flash, setFlash] = useState<Record<FlashKey, boolean>>({
     cutout: false,
     negotiated: false,
     futures: false,
   });
 
+  const dataHealthRef = useRef<HTMLDivElement | null>(null);
   const flashTimers = useRef<Record<FlashKey, ReturnType<typeof setTimeout> | null>>({
     cutout: null,
     negotiated: null,
@@ -239,6 +269,11 @@ export function Dashboard({ initialData }: DashboardProps) {
     flashTimers.current[key] = setTimeout(() => {
       setFlash((prev) => ({ ...prev, [key]: false }));
     }, 1500);
+  };
+
+  const focusDataHealth = () => {
+    setDetailsOpen(true);
+    setDataHealthFocusKey((key) => key + 1);
   };
 
   const refreshSnapshot = useEffectEvent(async () => {
@@ -345,6 +380,14 @@ export function Dashboard({ initialData }: DashboardProps) {
     };
   }, []);
 
+  useEffect(() => {
+    if (dataHealthFocusKey === 0) return;
+    const timer = setTimeout(() => {
+      dataHealthRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [dataHealthFocusKey]);
+
   const kpis = useMemo(() => {
     const latest = snapshot.cutout.latest;
     const yesterday = snapshot.cutout.yesterday;
@@ -411,7 +454,11 @@ export function Dashboard({ initialData }: DashboardProps) {
 
   return (
     <>
-      <TopNav health={snapshot.health} connection={connection} />
+      <TopNav
+        health={snapshot.health}
+        connection={connection}
+        onHealthClick={focusDataHealth}
+      />
       <main className="mx-auto w-full max-w-7xl px-4 pb-[env(safe-area-inset-bottom)] pt-6 sm:px-6 lg:px-8">
         <div className="space-y-6">
           <header className="space-y-4">
@@ -452,11 +499,7 @@ export function Dashboard({ initialData }: DashboardProps) {
                   : 'border-amber-700/30 bg-amber-50 text-amber-700'
               }`}
             >
-              <p>
-                ⚠ Data warning: {sourceLabel(freshnessWarning.source)} last updated{' '}
-                {freshnessWarning.hoursAgo === null ? 'never' : `${freshnessWarning.hoursAgo}h ago`}{' '}
-                — signals may be stale
-              </p>
+              <p>Data warning: {freshnessWarningText(freshnessWarning)}</p>
               <button
                 type="button"
                 aria-label="Dismiss data warning"
@@ -569,8 +612,11 @@ export function Dashboard({ initialData }: DashboardProps) {
                     health={healthBySource.cold_storage_monthly}
                     className="lg:col-span-6"
                   />
-                  <div className="lg:col-span-12">
-                    <DataHealthPanel health={snapshot.health} />
+                  <div ref={dataHealthRef} className="scroll-mt-20 lg:col-span-12">
+                    <DataHealthPanel
+                      health={snapshot.health}
+                      focusKey={dataHealthFocusKey > 0 ? dataHealthFocusKey : undefined}
+                    />
                   </div>
                 </div>
               </div>

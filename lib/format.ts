@@ -56,13 +56,49 @@ export function formatRelative(iso: string | null | undefined, nowMs?: number): 
   const now = nowMs ?? Date.now();
   const ms = now - new Date(iso).getTime();
   if (ms < 0) return 'just now';
-  const mins = Math.round(ms / 60000);
+  const mins = Math.floor(ms / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60);
+  const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.round(hrs / 24);
+  const days = Math.floor(hrs / 24);
   return `${days}d ago`;
+}
+
+export function formatRelativeLong(iso: string | null | undefined, nowMs?: number): string {
+  if (!iso) return 'never';
+  const now = nowMs ?? Date.now();
+  const ms = now - new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return 'unknown';
+  if (ms < 0) return 'just now';
+
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+  const weekMs = 7 * dayMs;
+  const monthMs = 30 * dayMs;
+
+  if (ms < minuteMs) return 'just now';
+  if (ms < hourMs) {
+    const minutes = Math.floor(ms / minuteMs);
+    return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`;
+  }
+  if (ms < dayMs) {
+    const hours = Math.floor(ms / hourMs);
+    return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+  }
+  if (ms < 2 * dayMs) return 'yesterday';
+  if (ms < weekMs) {
+    const days = Math.floor(ms / dayMs);
+    return `${days} days ago`;
+  }
+  if (ms < monthMs) {
+    const weeks = Math.floor(ms / weekMs);
+    return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`;
+  }
+
+  const months = Math.floor(ms / monthMs);
+  return `${months} ${months === 1 ? 'month' : 'months'} ago`;
 }
 
 export function formatMonthYear(month: number, year: number): string {

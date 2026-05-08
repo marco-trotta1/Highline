@@ -3,6 +3,7 @@ import type { ColdStorageMonthlyRow, DataHealthStatus } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Sparkline } from '@/components/ui/Sparkline';
 import { formatMonthYear, formatSignedPct } from '@/lib/format';
+import { formatDataHealthDetail } from './dataHealthText';
 
 type ColdStorageCardProps = HTMLAttributes<HTMLElement> & {
   latest: ColdStorageMonthlyRow | null;
@@ -50,6 +51,7 @@ export function ColdStorageCard({
     : bullish
       ? 'text-bull'
       : 'text-text-muted';
+  const healthDetail = health ? formatDataHealthDetail(health) : null;
 
   return (
     <Card
@@ -100,8 +102,8 @@ export function ColdStorageCard({
       <p className="mt-4 text-[10px] text-text-muted">
         USDA Monthly Cold Storage · vs. 5-year seasonal average
       </p>
-      {health?.state === 'stale' && health.stale_reason ? (
-        <p className="mt-2 text-[10px] text-warn">{health.stale_reason}</p>
+      {health?.state === 'stale' && healthDetail ? (
+        <p className="mt-2 text-[10px] text-warn">{healthDetail}</p>
       ) : null}
     </Card>
   );

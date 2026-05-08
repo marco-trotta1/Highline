@@ -2,6 +2,7 @@ import type { HTMLAttributes } from 'react';
 import type { DataHealthStatus, SlaughterWeeklyRow } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { formatDateShort, formatPct, formatSignedPct } from '@/lib/format';
+import { formatDataHealthDetail } from './dataHealthText';
 
 type SlaughterCardProps = HTMLAttributes<HTMLElement> & {
   latest: SlaughterWeeklyRow | null;
@@ -32,6 +33,7 @@ export function SlaughterCard({
   const heiferPct = denom > 0 ? (latest.heifer_count / denom) * 100 : 0;
   const deltaHeifer =
     fourWeekAvgHeiferPct != null ? heiferPct - fourWeekAvgHeiferPct : null;
+  const healthDetail = health ? formatDataHealthDetail(health) : null;
 
   return (
     <Card
@@ -81,8 +83,8 @@ export function SlaughterCard({
       <p className="mt-4 text-[10px] leading-relaxed text-text-muted">
         ↑ Heifer % = tighter Choice supply
       </p>
-      {health?.state === 'stale' && health.stale_reason ? (
-        <p className="mt-2 text-[10px] text-warn">{health.stale_reason}</p>
+      {health?.state === 'stale' && healthDetail ? (
+        <p className="mt-2 text-[10px] text-warn">{healthDetail}</p>
       ) : null}
     </Card>
   );
