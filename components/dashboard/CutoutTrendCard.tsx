@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -15,18 +14,12 @@ import type { CutoutDailyRow } from '@/lib/types';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { formatDateShort } from '@/lib/format';
 
-type Window = '7d' | '14d' | '30d' | '90d';
-
-const WINDOWS: Window[] = ['7d', '14d', '30d', '90d'];
-
 type CutoutTrendCardProps = {
   latest: CutoutDailyRow | null;
   yesterday: CutoutDailyRow | null;
 };
 
 export function CutoutTrendCard({ latest, yesterday }: CutoutTrendCardProps) {
-  const [activeWindow, setActiveWindow] = useState<Window>('7d');
-
   const points = [yesterday, latest]
     .filter((row): row is CutoutDailyRow => row !== null)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -38,32 +31,13 @@ export function CutoutTrendCard({ latest, yesterday }: CutoutTrendCardProps) {
 
   return (
     <div className="rounded-xl border border-[#1E2330] bg-[#13161E] p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5">
-          <h2 className="text-sm font-medium text-zinc-200">Cutout Trend</h2>
-          <Tooltip content="Choice boxed beef cutout values over the selected window. Source: USDA daily report.">
-            <span aria-hidden className="text-zinc-500">
-              ⓘ
-            </span>
-          </Tooltip>
-        </div>
-        <div className="flex gap-1 rounded-md border border-[#2A3040] bg-[#1E2330] p-0.5">
-          {WINDOWS.map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => setActiveWindow(w)}
-              aria-pressed={w === activeWindow}
-              className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
-                w === activeWindow
-                  ? 'bg-[#2A3040] text-zinc-100'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              {w}
-            </button>
-          ))}
-        </div>
+      <div className="mb-4 flex items-center gap-1.5">
+        <h2 className="text-sm font-medium text-zinc-200">Cutout Trend</h2>
+        <Tooltip content="Choice boxed beef cutout values, latest vs prior trading day. Source: USDA daily report.">
+          <span aria-hidden className="text-zinc-500">
+            ⓘ
+          </span>
+        </Tooltip>
       </div>
       <div className="h-64 w-full">
         {points.length < 2 ? (
