@@ -1,7 +1,7 @@
 import type { DataHealthStatus } from '@/lib/types';
 import { CollapsiblePanel } from '@/components/ui/CollapsiblePanel';
 import { StatusDot } from '@/components/ui/StatusDot';
-import { formatDataHealthAge, formatDataHealthDetail } from './dataHealthText';
+import { formatDataHealthAge, formatDataHealthDetail } from '@/lib/data-health';
 
 const SOURCE_LABELS: Record<string, string> = {
   cutout_daily: 'Cutout',

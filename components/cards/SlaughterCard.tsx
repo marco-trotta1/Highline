@@ -2,7 +2,7 @@ import type { HTMLAttributes } from 'react';
 import type { DataHealthStatus, SlaughterWeeklyRow } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { formatDateShort, formatPct, formatSignedPct } from '@/lib/format';
-import { formatDataHealthDetail } from './dataHealthText';
+import { formatDataHealthDetail } from '@/lib/data-health';
 
 type SlaughterCardProps = HTMLAttributes<HTMLElement> & {
   latest: SlaughterWeeklyRow | null;

@@ -3,7 +3,7 @@ import type { ColdStorageMonthlyRow, DataHealthStatus } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Sparkline } from '@/components/ui/Sparkline';
 import { formatMonthYear, formatSignedPct } from '@/lib/format';
-import { formatDataHealthDetail } from './dataHealthText';
+import { formatDataHealthDetail } from '@/lib/data-health';
 
 type ColdStorageCardProps = HTMLAttributes<HTMLElement> & {
   latest: ColdStorageMonthlyRow | null;

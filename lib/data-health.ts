@@ -1,5 +1,5 @@
-import type { DataHealthStatus } from '@/lib/types';
-import { formatDateTime, formatRelativeLong } from '@/lib/format';
+import type { DataHealthStatus } from './types';
+import { formatDateTime, formatRelativeLong } from './format';
 
 const SOURCE_CADENCE: Record<string, string> = {
   cutout_daily: 'Expected twice each business day.',
@@ -13,7 +13,7 @@ export function formatDataHealthAge(iso: string | null): string {
   if (!iso) return 'No data';
   const relative = formatRelativeLong(iso);
   if (relative === 'unknown') return 'Unknown';
-  return relative === 'just now' ? relative : relative;
+  return relative;
 }
 
 export function formatDataHealthDetail(row: DataHealthStatus): string | null {
@@ -26,4 +26,3 @@ export function formatDataHealthDetail(row: DataHealthStatus): string | null {
 
   return `Last updated ${formatRelativeLong(row.last_updated)} (${formatDateTime(row.last_updated)}). ${cadence}`;
 }
-

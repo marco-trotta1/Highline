@@ -3,7 +3,7 @@ import type { DataHealthStatus, FuturesSnapshotRow } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Delta } from '@/components/ui/Delta';
 import { formatCurrency, formatContractName } from '@/lib/format';
-import { formatDataHealthDetail } from './dataHealthText';
+import { formatDataHealthDetail } from '@/lib/data-health';
 
 type FuturesCardProps = HTMLAttributes<HTMLElement> & {
   latest: FuturesSnapshotRow | null;

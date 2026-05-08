@@ -3,7 +3,7 @@ import type { CutoutDailyRow, DataHealthStatus } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Delta } from '@/components/ui/Delta';
 import { formatCurrency, formatDateShort } from '@/lib/format';
-import { formatDataHealthDetail } from './dataHealthText';
+import { formatDataHealthDetail } from '@/lib/data-health';
 
 type CutoutCardProps = HTMLAttributes<HTMLElement> & {
   latest: CutoutDailyRow | null;

@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/Card';
 import { RangeBar } from '@/components/ui/RangeBar';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { formatCurrency, formatInt } from '@/lib/format';
-import { formatDataHealthDetail } from './dataHealthText';
+import { formatDataHealthDetail } from '@/lib/data-health';
 
 type NegotiatedCardProps = HTMLAttributes<HTMLElement> & {
   today: NegotiatedSalesRow[];
